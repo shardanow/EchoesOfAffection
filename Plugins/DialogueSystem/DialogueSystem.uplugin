@@ -1,0 +1,65 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "Dialogue System",
+	"Description": "Advanced modular dialogue system with relationship management, AI integration, and data-driven design for RPG/relationship simulator games.",
+	"Category": "Gameplay",
+	"CreatedBy": "Your Studio Name",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "DialogueSystemCore",
+			"Type": "Runtime",
+			"LoadingPhase": "PreDefault",
+			"AdditionalDependencies": [
+				"Engine",
+				"CoreUObject"
+			]
+		},
+		{
+			"Name": "DialogueSystemRuntime",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine",
+				"CoreUObject",
+				"DialogueSystemCore"
+			]
+		},
+		{
+			"Name": "DialogueSystemUI",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine",
+				"CoreUObject",
+				"UMG",
+				"Slate",
+				"SlateCore",
+				"DialogueSystemCore",
+				"DialogueSystemRuntime"
+			]
+		},
+		{
+			"Name": "DialogueSystemAI",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine",
+				"CoreUObject",
+				"HTTP",
+				"Json",
+				"JsonUtilities",
+				"DialogueSystemCore"
+			]
+		}
+	]
+}
