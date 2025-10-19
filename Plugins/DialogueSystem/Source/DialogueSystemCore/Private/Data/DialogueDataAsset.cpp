@@ -14,6 +14,7 @@ void UDialogueDataAsset::PostLoad()
     RebuildIndex();
 }
 
+#if WITH_EDITOR
 void UDialogueDataAsset::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
     Super::PostEditChangeProperty(PropertyChangedEvent);
@@ -24,6 +25,7 @@ void UDialogueDataAsset::PostEditChangeProperty(FPropertyChangedEvent& PropertyC
         RebuildIndex();
     }
 }
+#endif
 
 UDialogueNode* UDialogueDataAsset::FindNode(FName NodeId) const
 {

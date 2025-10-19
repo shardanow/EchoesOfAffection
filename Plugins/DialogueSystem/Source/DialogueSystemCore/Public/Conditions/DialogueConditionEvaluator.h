@@ -230,7 +230,16 @@ protected:
     /** Парсинг атомарного условия */
     UDialogueCondition* ParseAtom(const TArray<FString>& Tokens, int32& Index);
 
-    /** Кэш распарсенных условий (для оптимизации) */
+    /** Helper methods for parsing specific condition types */
+    UDialogueCondition* ParseHasItemCondition(const TArray<FString>& Tokens, int32& Index);
+    UDialogueCondition* ParseMemoryCondition(const TArray<FString>& Tokens, int32& Index);
+    UDialogueCondition* ParseVisitedCondition(const TArray<FString>& Tokens, int32& Index);
+    UDialogueCondition* ParseTagCondition(const TArray<FString>& Tokens, int32& Index);
+    UDialogueCondition* ParseAffinityCondition(const TArray<FString>& Tokens, int32& Index);
+    UDialogueCondition* ParseVariableCondition(const TArray<FString>& Tokens, int32& Index);
+    UDialogueCondition* ParseTimeCondition(const TArray<FString>& Tokens, int32& Index);
+
+    /** ??? ???????????? ??????? (??? ???????????) */
     UPROPERTY(Transient)
     TMap<FString, TObjectPtr<UDialogueCondition>> ConditionCache;
 };

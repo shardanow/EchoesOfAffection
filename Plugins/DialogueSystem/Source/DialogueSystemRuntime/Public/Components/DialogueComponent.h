@@ -12,6 +12,12 @@ class UDialogueRunner;
 class UDialogueDataAsset;
 class UDialogueSessionContext;
 class URelationshipComponent;
+class UNPCMemoryComponent;
+class IDialogueService;
+
+// Delegates
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDialogueStartedSignature, UDialogueRunner*, Runner);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDialogueEndedSignature);
 
 /**
  * Компонент диалога для NPC
@@ -20,6 +26,8 @@ class URelationshipComponent;
  * - Интеграцию с интеракцией
  * - Связь с Relationship Component
  * - Управление состоянием диалога
+ * 
+ * Uses Dependency Injection via IDialogueService interface
  */
 UCLASS(ClassGroup=(Dialogue), meta=(BlueprintSpawnableComponent))
 class DIALOGUESYSTEMRUNTIME_API UDialogueComponent : public UActorComponent, public IDialogueParticipant
@@ -28,6 +36,18 @@ class DIALOGUESYSTEMRUNTIME_API UDialogueComponent : public UActorComponent, pub
 
 public:
     UDialogueComponent();
+
+    //~ Begin Delegates
+
+    /** Called when dialogue starts */
+    UPROPERTY(BlueprintAssignable, Category = "Dialogue|Events")
+    FOnDialogueStartedSignature OnDialogueStarted;
+
+    /** Called when dialogue ends */
+    UPROPERTY(BlueprintAssignable, Category = "Dialogue|Events")
+    FOnDialogueEndedSignature OnDialogueEnded;
+
+    //~ End Delegates
 
 protected:
     //~ Begin Configuration
@@ -71,6 +91,10 @@ protected:
     /** Relationship Component (cached) */
     UPROPERTY(Transient)
     TObjectPtr<URelationshipComponent> RelationshipComp;
+
+    /** Memory Component (cached) */
+    UPROPERTY(Transient)
+    TObjectPtr<UNPCMemoryComponent> MemoryComp;
 
     /** Последний Context */
     UPROPERTY(Transient)
@@ -123,9 +147,20 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dialogue")
     void SetDialogueCooldown(float Seconds) { DialogueCooldown = Seconds; }
 
+    /** Получить Memory Component */
+    UFUNCTION(BlueprintPure, Category = "Dialogue")
+    UNPCMemoryComponent* GetMemoryComponent() const { return MemoryComp; }
+
     //~ End Public API
 
 protected:
+    /**
+     * Получить сервис диалогов через внедрение зависимостей
+     * Поддерживает декуплирование на основе интерфейсов
+     * @return Экземпляр DialogueService или nullptr
+     */
+    IDialogueService* GetDialogueService() const;
+
     /** Callback: диалог завершён */
     UFUNCTION()
     void HandleDialogueEnded();

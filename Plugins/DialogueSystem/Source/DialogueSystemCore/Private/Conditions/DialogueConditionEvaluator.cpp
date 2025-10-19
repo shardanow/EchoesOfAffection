@@ -231,17 +231,41 @@ TArray<FString> UDialogueConditionEvaluator::TokenizeExpression(const FString& E
     TArray<FString> Tokens;
     FString CurrentToken;
     bool bInString = false;
+    bool bInQuotes = false;
 
     for (int32 i = 0; i < Expression.Len(); ++i)
     {
         TCHAR Ch = Expression[i];
 
-        if (Ch == '"')
+        // Handle string literals with quotes
+        if (Ch == '"' || Ch == '\'')
         {
-            bInString = !bInString;
+            if (bInQuotes && bInString)
+            {
+                // End of quoted string
+                if (!CurrentToken.IsEmpty())
+                {
+                    Tokens.Add(CurrentToken);
+                    CurrentToken.Empty();
+                }
+                bInString = false;
+                bInQuotes = false;
+            }
+            else if (!bInString)
+            {
+                // Start of quoted string
+                if (!CurrentToken.IsEmpty())
+                {
+                    Tokens.Add(CurrentToken);
+                    CurrentToken.Empty();
+                }
+                bInString = true;
+                bInQuotes = true;
+            }
             continue;
         }
 
+        // Inside a quoted string, add everything
         if (bInString)
         {
             CurrentToken.AppendChar(Ch);
@@ -259,7 +283,7 @@ TArray<FString> UDialogueConditionEvaluator::TokenizeExpression(const FString& E
             continue;
         }
 
-        // Handle operators and delimiters
+        // Handle single-character operators and delimiters
         if (Ch == '(' || Ch == ')' || Ch == ',' || Ch == '[' || Ch == ']')
         {
             if (!CurrentToken.IsEmpty())
@@ -272,25 +296,63 @@ TArray<FString> UDialogueConditionEvaluator::TokenizeExpression(const FString& E
         }
 
         // Handle multi-character operators
-        if (Ch == '&' || Ch == '|' || Ch == '=' || Ch == '!' || Ch == '<' || Ch == '>')
+        if (i + 1 < Expression.Len())
         {
-            if (i + 1 < Expression.Len() && 
-                (Expression[i + 1] == '&' || Expression[i + 1] == '|' || Expression[i + 1] == '='))
+            TCHAR NextCh = Expression[i + 1];
+            
+            // Two-character operators: ==, !=, <=, >=, &&, ||, :
+            if ((Ch == '=' && NextCh == '=') ||
+                (Ch == '!' && NextCh == '=') ||
+                (Ch == '<' && NextCh == '=') ||
+                (Ch == '>' && NextCh == '=') ||
+                (Ch == '&' && NextCh == '&') ||
+                (Ch == '|' && NextCh == '|') ||
+                (Ch == ':' && NextCh == ':'))
             {
                 if (!CurrentToken.IsEmpty())
                 {
                     Tokens.Add(CurrentToken);
                     CurrentToken.Empty();
                 }
-                Tokens.Add(FString::Chr(Ch) + FString::Chr(Expression[i + 1]));
-                ++i;
+                Tokens.Add(FString::Printf(TEXT("%c%c"), Ch, NextCh));
+                ++i; // Skip next character
                 continue;
             }
         }
 
+        // Handle single-character operators that might not be followed by =
+        if (Ch == '&' || Ch == '|' || Ch == '!' || Ch == '<' || Ch == '>' || Ch == '=' || Ch == ':')
+        {
+            if (!CurrentToken.IsEmpty())
+            {
+                Tokens.Add(CurrentToken);
+                CurrentToken.Empty();
+            }
+            Tokens.Add(FString(1, &Ch));
+            continue;
+        }
+
+        // Handle dot for member access (like Time.Morning)
+        if (Ch == '.')
+        {
+            // Don't tokenize dots in numeric literals (like 1.5)
+            if (!CurrentToken.IsEmpty() && CurrentToken.IsNumeric())
+            {
+                CurrentToken.AppendChar(Ch);
+            }
+            else
+            {
+                // This might be member access
+                CurrentToken.AppendChar(Ch);
+            }
+            continue;
+        }
+
+        // Regular character - add to current token
         CurrentToken.AppendChar(Ch);
     }
 
+    // Add final token if exists
     if (!CurrentToken.IsEmpty())
     {
         Tokens.Add(CurrentToken);
@@ -353,6 +415,258 @@ UDialogueCondition* UDialogueConditionEvaluator::ParseTerm(const TArray<FString>
     return Left;
 }
 
+// Helper methods - defined BEFORE ParseAtom so they can be called from it
+UDialogueCondition* UDialogueConditionEvaluator::ParseHasItemCondition(const TArray<FString>& Tokens, int32& Index)
+{
+    ++Index; // Skip 'hasItem' or 'has'
+    
+    if (Index >= Tokens.Num() || Tokens[Index] != TEXT("("))
+    {
+        return nullptr;
+    }
+    ++Index; // Skip '('
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString ItemName = Tokens[Index++];
+    int32 Count = 1;
+    
+    // Optional count parameter
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT(","))
+    {
+        ++Index; // Skip ',')
+        if (Index < Tokens.Num())
+        {
+            Count = FCString::Atoi(*Tokens[Index++]);
+        }
+    }
+    
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT(")"))
+    {
+        ++Index; // Skip ')'
+    }
+
+    UDialogueCondition_HasItem* Condition = NewObject<UDialogueCondition_HasItem>(this);
+    Condition->ItemId = FName(*ItemName);
+    Condition->MinCount = Count;
+    return Condition;
+}
+
+UDialogueCondition* UDialogueConditionEvaluator::ParseMemoryCondition(const TArray<FString>& Tokens, int32& Index)
+{
+    ++Index; // Skip 'memory'
+    
+    if (Index >= Tokens.Num() || Tokens[Index] != TEXT("("))
+    {
+        return nullptr;
+    }
+    ++Index; // Skip '('
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString Key = Tokens[Index++];
+    bool ExpectedValue = true;
+    
+    // Optional value parameter
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT(","))
+    {
+        ++Index; // Skip ',')
+        if (Index < Tokens.Num())
+        {
+            FString ValueStr = Tokens[Index++].ToLower();
+            ExpectedValue = (ValueStr == TEXT("true") || ValueStr == TEXT("1"));
+        }
+    }
+    
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT(")"))
+    {
+        ++Index; // Skip ')'
+    }
+
+    UDialogueCondition_Memory* Condition = NewObject<UDialogueCondition_Memory>(this);
+    Condition->MemoryKey = FName(*Key);
+    Condition->ExpectedValue = ExpectedValue;
+    return Condition;
+}
+
+UDialogueCondition* UDialogueConditionEvaluator::ParseVisitedCondition(const TArray<FString>& Tokens, int32& Index)
+{
+    ++Index; // Skip 'visited'
+    
+    if (Index >= Tokens.Num() || Tokens[Index] != TEXT("("))
+    {
+        return nullptr;
+    }
+    ++Index; // Skip '('
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString NodeId = Tokens[Index++];
+    
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT(")"))
+    {
+        ++Index; // Skip ')'
+    }
+
+    // visited(NodeId) is sugar for memory(NodeId_Visited, true)
+    UDialogueCondition_Memory* Condition = NewObject<UDialogueCondition_Memory>(this);
+    Condition->MemoryKey = FName(*(NodeId + TEXT("_Visited")));
+    Condition->ExpectedValue = true;
+    return Condition;
+}
+
+UDialogueCondition* UDialogueConditionEvaluator::ParseTagCondition(const TArray<FString>& Tokens, int32& Index)
+{
+    ++Index; // Skip 'tag' or 'hasTag'
+    
+    if (Index >= Tokens.Num() || Tokens[Index] != TEXT("("))
+    {
+        return nullptr;
+    }
+    ++Index; // Skip '('
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString TagName = Tokens[Index++];
+    
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT(")"))
+    {
+        ++Index; // Skip ')'
+    }
+
+    UDialogueCondition_WorldState* Condition = NewObject<UDialogueCondition_WorldState>(this);
+    Condition->RequiredTag = FGameplayTag::RequestGameplayTag(FName(*TagName), false);
+    return Condition;
+}
+
+UDialogueCondition* UDialogueConditionEvaluator::ParseAffinityCondition(const TArray<FString>& Tokens, int32& Index)
+{
+    ++Index; // Skip 'affinity'
+    
+    if (Index >= Tokens.Num() || Tokens[Index] != TEXT("["))
+    {
+        return nullptr;
+    }
+    ++Index; // Skip '['
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString NPCName = Tokens[Index++];
+
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT("]"))
+    {
+        ++Index; // Skip ']'
+    }
+
+    // Expect comparison operator (>=, >, <=, <, ==, !=)
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString Operator = Tokens[Index++];
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    float Value = FCString::Atof(*Tokens[Index++]);
+
+    UDialogueCondition_Affinity* Condition = NewObject<UDialogueCondition_Affinity>(this);
+    Condition->NPCName = FName(*NPCName);
+    Condition->MinValue = Value;
+    // Note: Currently only supports >= comparison, could extend to support other operators
+    return Condition;
+}
+
+UDialogueCondition* UDialogueConditionEvaluator::ParseVariableCondition(const TArray<FString>& Tokens, int32& Index)
+{
+    ++Index; // Skip 'variable' or 'var'
+    
+    if (Index >= Tokens.Num() || Tokens[Index] != TEXT("["))
+    {
+        return nullptr;
+    }
+    ++Index; // Skip '['
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString Key = Tokens[Index++];
+
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT("]"))
+    {
+        ++Index; // Skip ']'
+    }
+
+    // Expect comparison operator
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString Operator = Tokens[Index++];
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString Value = Tokens[Index++];
+
+    UDialogueCondition_CustomVariable* Condition = NewObject<UDialogueCondition_CustomVariable>(this);
+    Condition->VariableKey = FName(*Key);
+    Condition->ExpectedValue = Value;
+    Condition->bNumericComparison = Value.IsNumeric();
+    return Condition;
+}
+
+UDialogueCondition* UDialogueConditionEvaluator::ParseTimeCondition(const TArray<FString>& Tokens, int32& Index)
+{
+    ++Index; // Skip 'time'
+    
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString Operator = Tokens[Index++];
+    
+    if (Operator != TEXT("==") && Operator != TEXT("="))
+    {
+        return nullptr;
+    }
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString TimeValue = Tokens[Index++];
+
+    UDialogueCondition_TimeOfDay* Condition = NewObject<UDialogueCondition_TimeOfDay>(this);
+    Condition->RequiredTime = FGameplayTag::RequestGameplayTag(FName(*TimeValue), false);
+    return Condition;
+}
+
 UDialogueCondition* UDialogueConditionEvaluator::ParseAtom(const TArray<FString>& Tokens, int32& Index)
 {
     if (Index >= Tokens.Num())
@@ -383,102 +697,53 @@ UDialogueCondition* UDialogueConditionEvaluator::ParseAtom(const TArray<FString>
         return Inner;
     }
 
-    // Handle function-like conditions
-    if (Token.ToLower() == TEXT("hasitem") || Token.ToLower() == TEXT("has"))
+    // Handle function-style conditions
+    FString LowerToken = Token.ToLower();
+    
+    // hasItem(ItemId) or hasItem(ItemId, Count)
+    if (LowerToken == TEXT("hasitem") || LowerToken == TEXT("has"))
     {
-        ++Index;
-        if (Index < Tokens.Num() && Tokens[Index] == TEXT("("))
-        {
-            ++Index;
-            if (Index < Tokens.Num())
-            {
-                FString ItemName = Tokens[Index++];
-                int32 Count = 1;
-                
-                // Optional count parameter
-                if (Index < Tokens.Num() && Tokens[Index] == TEXT(","))
-                {
-                    ++Index;
-                    if (Index < Tokens.Num())
-                    {
-                        Count = FCString::Atoi(*Tokens[Index++]);
-                    }
-                }
-                
-                if (Index < Tokens.Num() && Tokens[Index] == TEXT(")"))
-                {
-                    ++Index;
-                }
-
-                UDialogueCondition_HasItem* Condition = NewObject<UDialogueCondition_HasItem>(this);
-                Condition->ItemId = FName(*ItemName);
-                Condition->MinCount = Count;
-                return Condition;
-            }
-        }
+        return ParseHasItemCondition(Tokens, Index);
     }
 
-    // Handle affinity[NPC] >= Value
-    if (Token.ToLower() == TEXT("affinity"))
+    // memory(Key) or memory(Key, Value)
+    if (LowerToken == TEXT("memory"))
     {
-        ++Index;
-        if (Index < Tokens.Num() && Tokens[Index] == TEXT("["))
-
-        {
-            ++Index;
-            if (Index < Tokens.Num())
-            {
-                FString NPCName = Tokens[Index++];
-
-                if (Index < Tokens.Num() && Tokens[Index] == TEXT("]"))
-                {
-                    ++Index;
-                }
-
-                // Expect comparison operator
-                if (Index < Tokens.Num())
-                {
-                    FString Operator = Tokens[Index++];
-
-                    if (Index < Tokens.Num())
-                    {
-                        float Value = FCString::Atof(*Tokens[Index++]);
-
-                        UDialogueCondition_Affinity* Condition = NewObject<UDialogueCondition_Affinity>(this);
-                        Condition->NPCName = FName(*NPCName);
-                        Condition->MinValue = Value;
-                        return Condition;
-                    }
-                }
-            }
-        }
+        return ParseMemoryCondition(Tokens, Index);
     }
 
-    // Handle memory(key)
-    if (Token.ToLower() == TEXT("memory"))
+    // visited(NodeId)
+    if (LowerToken == TEXT("visited"))
     {
-        ++Index;
-        if (Index < Tokens.Num() && Tokens[Index] == TEXT("("))
-        {
-            ++Index;
-            if (Index < Tokens.Num())
-            {
-                FString Key = Tokens[Index++];
-
-                if (Index < Tokens.Num() && Tokens[Index] == TEXT(")"))
-                {
-                    ++Index;
-                }
-
-                UDialogueCondition_Memory* Condition = NewObject<UDialogueCondition_Memory>(this);
-                Condition->MemoryKey = FName(*Key);
-                Condition->ExpectedValue = true;
-                return Condition;
-            }
-        }
+        return ParseVisitedCondition(Tokens, Index);
     }
 
-    // If nothing else, skip this token
+    // tag(TagName) or hasTag(TagName)
+    if (LowerToken == TEXT("tag") || LowerToken == TEXT("hastag"))
+    {
+        return ParseTagCondition(Tokens, Index);
+    }
+
+    // Handle bracket-style conditions
+    // affinity[NPC] >= Value
+    if (LowerToken == TEXT("affinity"))
+    {
+        return ParseAffinityCondition(Tokens, Index);
+    }
+
+    // variable[Key] == Value
+    if (LowerToken == TEXT("variable") || LowerToken == TEXT("var"))
+    {
+        return ParseVariableCondition(Tokens, Index);
+    }
+
+    // time == TimeTag
+    if (LowerToken == TEXT("time"))
+    {
+        return ParseTimeCondition(Tokens, Index);
+    }
+
+    // If nothing matched, skip this token
     ++Index;
     return nullptr;
 }

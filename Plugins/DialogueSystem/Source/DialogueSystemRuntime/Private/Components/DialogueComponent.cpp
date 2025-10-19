@@ -2,14 +2,18 @@
 
 #include "Components/DialogueComponent.h"
 #include "Interfaces/IDialogueParticipant.h"
+#include "Interfaces/IDialogueService.h"
 #include "Subsystems/DialogueSubsystem.h"
 #include "Components/RelationshipComponent.h"
+#include "Components/NPCMemoryComponent.h"
 #include "Core/DialogueRunner.h"
 #include "Core/DialogueContext.h"
 #include "Data/DialogueDataAsset.h"
 #include "GameFramework/Actor.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
+
+DEFINE_LOG_CATEGORY_STATIC(LogDialogueComponent, Log, All);
 
 UDialogueComponent::UDialogueComponent()
 {
@@ -26,6 +30,7 @@ void UDialogueComponent::BeginPlay()
     if (Owner)
     {
         RelationshipComp = Owner->FindComponentByClass<URelationshipComponent>();
+        MemoryComp = Owner->FindComponentByClass<UNPCMemoryComponent>();
     }
 }
 
@@ -47,7 +52,6 @@ UTexture2D* UDialogueComponent::GetParticipantPortrait_Implementation() const
 
 bool UDialogueComponent::CanStartDialogue_Implementation(AActor* Initiator) const
 {
-    // Default: can always start dialogue
     if (!bCanStartDialogue)
     {
         return false;
@@ -78,16 +82,35 @@ bool UDialogueComponent::CanStartDialogue_Implementation(AActor* Initiator) cons
 
 void UDialogueComponent::OnDialogueStarted_Implementation(UDialogueRunner* Runner)
 {
-    // Override in blueprints
     ActiveRunner = Runner;
     SetComponentTickEnabled(true);
+    
+    // Broadcast delegate (избегаем конфликта имен через явное указание)
+    OnDialogueStarted.Broadcast(Runner);
+    
+    // Create memory of dialogue start if memory component exists
+    if (MemoryComp && LastContext && LastContext->Player)
+    {
+        FFormatNamedArguments Args;
+        Args.Add(TEXT("ActorName"), FText::FromString(LastContext->Player->GetName()));
+        
+        MemoryComp->CreateMemory(
+            EMemoryType::DialogueEvent,
+            FText::Format(NSLOCTEXT("Dialogue", "StartedConversation", "Started conversation with {ActorName}"), Args),
+            40.0f,
+            EMemoryEmotion::Neutral,
+            LastContext->Player
+        );
+    }
 }
 
 void UDialogueComponent::OnDialogueEnded_Implementation()
 {
-    // Override in blueprints
     ActiveRunner = nullptr;
     SetComponentTickEnabled(false);
+    
+    // Broadcast delegate (избегаем конфликта имен через явное указание)
+    OnDialogueEnded.Broadcast();
 }
 
 bool UDialogueComponent::StartDialogue(AActor* Initiator)
@@ -100,12 +123,15 @@ bool UDialogueComponent::StartDialogue(AActor* Initiator)
     UWorld* World = GetWorld();
     if (!World)
     {
+        UE_LOG(LogDialogueComponent, Error, TEXT("StartDialogue - No valid World"));
         return false;
     }
 
-    UDialogueSubsystem* DialogueSubsystem = World->GetGameInstance()->GetSubsystem<UDialogueSubsystem>();
-    if (!DialogueSubsystem)
+    // Get DialogueService via interface instead of direct subsystem access
+    IDialogueService* DialogueService = GetDialogueService();
+    if (!DialogueService)
     {
+        UE_LOG(LogDialogueComponent, Error, TEXT("StartDialogue - No DialogueService available"));
         return false;
     }
 
@@ -118,11 +144,18 @@ bool UDialogueComponent::StartDialogue(AActor* Initiator)
     UDialogueDataAsset* SelectedDialogue = SelectDialogue(Context);
     if (!SelectedDialogue)
     {
+        UE_LOG(LogDialogueComponent, Warning, TEXT("StartDialogue - No dialogue selected"));
         return false;
     }
 
-    // Start dialogue through subsystem
-    UDialogueRunner* Runner = DialogueSubsystem->StartDialogue(SelectedDialogue, Initiator, GetOwner());
+    // Start dialogue through service interface
+    UDialogueRunner* Runner = IDialogueService::Execute_StartDialogue(
+        Cast<UObject>(DialogueService), 
+        SelectedDialogue, 
+        Initiator, 
+        GetOwner()
+    );
+
     if (Runner)
     {
         ActiveRunner = Runner;
@@ -130,12 +163,36 @@ bool UDialogueComponent::StartDialogue(AActor* Initiator)
         
         // Bind to end event
         Runner->OnDialogueEnded.AddDynamic(this, &UDialogueComponent::HandleDialogueEnded);
-        OnDialogueStarted(Runner);
+        
+        // Call interface method (через IDialogueParticipant)
+        IDialogueParticipant::Execute_OnDialogueStarted(this, Runner);
         
         return true;
     }
 
     return false;
+}
+
+IDialogueService* UDialogueComponent::GetDialogueService() const
+{
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return nullptr;
+    }
+
+    // Try to get service from GameInstance subsystem
+    UGameInstance* GameInstance = World->GetGameInstance();
+    if (GameInstance)
+    {
+        UDialogueSubsystem* Subsystem = GameInstance->GetSubsystem<UDialogueSubsystem>();
+        if (Subsystem && Subsystem->Implements<UDialogueService>())
+        {
+            return Cast<IDialogueService>(Subsystem);
+        }
+    }
+
+    return nullptr;
 }
 
 UDialogueDataAsset* UDialogueComponent::SelectDialogue(const UDialogueSessionContext* Context)
@@ -164,8 +221,29 @@ void UDialogueComponent::HandleDialogueEnded()
     if (ActiveRunner)
     {
         ActiveRunner->OnDialogueEnded.RemoveDynamic(this, &UDialogueComponent::HandleDialogueEnded);
+        
+        // Create memory of dialogue end if memory component exists
+        if (MemoryComp && LastContext && LastContext->Player)
+        {
+            // Calculate importance based on duration
+            FTimespan Duration = FDateTime::Now() - LastContext->SessionStartTime;
+            float Importance = FMath::Clamp(30.0f + Duration.GetTotalMinutes() * 5.0f, 30.0f, 80.0f);
+            
+            FFormatNamedArguments Args;
+            Args.Add(TEXT("ActorName"), FText::FromString(LastContext->Player->GetName()));
+            
+            MemoryComp->CreateMemory(
+                EMemoryType::DialogueEvent,
+                FText::Format(NSLOCTEXT("Dialogue", "HadConversation", "Had a conversation with {ActorName}"), Args),
+                Importance,
+                EMemoryEmotion::Neutral,
+                LastContext->Player
+            );
+        }
+        
         ActiveRunner = nullptr;
     }
 
-    OnDialogueEnded();
+    // Call interface method
+    IDialogueParticipant::Execute_OnDialogueEnded(this);
 }

@@ -26,7 +26,7 @@ void UDialogueEffect_ModifyTrust::Execute_Implementation(UDialogueSessionContext
 {
     if (Context)
     {
-        // TODO: Implement through RelationshipComponent instead
+        // TODO: Implement through RelationshipComponent invece
         // float Current = Context->GetTrust(NPCName);
         // Context->SetTrust(NPCName, Current + DeltaValue);
     }
@@ -277,23 +277,48 @@ TArray<FString> UDialogueEffectExecutor::TokenizeExpression(const FString& Expre
     TArray<FString> Tokens;
     FString CurrentToken;
     bool bInString = false;
+    bool bInQuotes = false;
 
     for (int32 i = 0; i < Expression.Len(); ++i)
     {
         TCHAR Ch = Expression[i];
 
-        if (Ch == '"')
+        // Handle string literals with quotes
+        if (Ch == '"' || Ch == '\'')
         {
-            bInString = !bInString;
+            if (bInQuotes && bInString)
+            {
+                // End of quoted string
+                if (!CurrentToken.IsEmpty())
+                {
+                    Tokens.Add(CurrentToken);
+                    CurrentToken.Empty();
+                }
+                bInString = false;
+                bInQuotes = false;
+            }
+            else if (!bInString)
+            {
+                // Start of quoted string
+                if (!CurrentToken.IsEmpty())
+                {
+                    Tokens.Add(CurrentToken);
+                    CurrentToken.Empty();
+                }
+                bInString = true;
+                bInQuotes = true;
+            }
             continue;
         }
 
+        // Inside a quoted string, add everything
         if (bInString)
         {
             CurrentToken.AppendChar(Ch);
             continue;
         }
 
+        // Handle whitespace
         if (FChar::IsWhitespace(Ch))
         {
             if (!CurrentToken.IsEmpty())
@@ -304,7 +329,7 @@ TArray<FString> UDialogueEffectExecutor::TokenizeExpression(const FString& Expre
             continue;
         }
 
-        // Handle operators and delimiters
+        // Handle single-character operators and delimiters
         if (Ch == '(' || Ch == ')' || Ch == ',' || Ch == '[' || Ch == ']')
         {
             if (!CurrentToken.IsEmpty())
@@ -316,21 +341,31 @@ TArray<FString> UDialogueEffectExecutor::TokenizeExpression(const FString& Expre
             continue;
         }
 
-        // Handle operators +=, -=, etc
-        if ((Ch == '+' || Ch == '-' || Ch == '*' || Ch == '/') && 
-            i + 1 < Expression.Len() && Expression[i + 1] == '=')
+        // Handle multi-character operators
+        if (i + 1 < Expression.Len())
         {
-            if (!CurrentToken.IsEmpty())
+            TCHAR NextCh = Expression[i + 1];
+            
+            // Two-character operators: +=, -=, *=, /=, ==, :: 
+            if ((Ch == '+' && NextCh == '=') ||
+                (Ch == '-' && NextCh == '=') ||
+                (Ch == '*' && NextCh == '=') ||
+                (Ch == '/' && NextCh == '=') ||
+                (Ch == '=' && NextCh == '=') ||
+                (Ch == ':' && NextCh == ':'))
             {
-                Tokens.Add(CurrentToken);
-                CurrentToken.Empty();
+                if (!CurrentToken.IsEmpty())
+                {
+                    Tokens.Add(CurrentToken);
+                    CurrentToken.Empty();
+                }
+                Tokens.Add(FString::Printf(TEXT("%c%c"), Ch, NextCh));
+                ++i; // Skip next character
+                continue;
             }
-            Tokens.Add(FString::Chr(Ch) + TEXT("="));
-            ++i;
-            continue;
         }
 
-        // Handle assignment =
+        // Handle single assignment operator
         if (Ch == '=')
         {
             if (!CurrentToken.IsEmpty())
@@ -342,15 +377,449 @@ TArray<FString> UDialogueEffectExecutor::TokenizeExpression(const FString& Expre
             continue;
         }
 
+        // Handle arithmetic operators (not followed by =)
+        if (Ch == '+' || Ch == '-' || Ch == '*' || Ch == '/')
+        {
+            // Check if it's a unary minus for negative numbers
+            if (Ch == '-' && CurrentToken.IsEmpty() && 
+                (Tokens.Num() == 0 || Tokens.Last() == TEXT("(") || Tokens.Last() == TEXT(",")))
+            {
+                // This might be a negative number
+                CurrentToken.AppendChar(Ch);
+            }
+            else
+            {
+                if (!CurrentToken.IsEmpty())
+                {
+                    Tokens.Add(CurrentToken);
+                    CurrentToken.Empty();
+                }
+                Tokens.Add(FString(1, &Ch));
+            }
+            continue;
+        }
+
+        // Handle dot for member access or decimal numbers
+        if (Ch == '.')
+        {
+            if (!CurrentToken.IsEmpty() && CurrentToken.IsNumeric())
+            {
+                // Part of a numeric literal
+                CurrentToken.AppendChar(Ch);
+            }
+            else
+            {
+                // Member access
+                CurrentToken.AppendChar(Ch);
+            }
+            continue;
+        }
+
+        // Regular character - add to current token
         CurrentToken.AppendChar(Ch);
     }
 
+    // Add final token if exists
     if (!CurrentToken.IsEmpty())
     {
         Tokens.Add(CurrentToken);
     }
 
     return Tokens;
+}
+
+// Helper methods - defined BEFORE ParseSingleEffect so they can be called from it
+UDialogueEffect* UDialogueEffectExecutor::ParseGiveItemEffect(const TArray<FString>& Tokens, int32& Index)
+{
+    ++Index; // Skip 'giveItem' or 'give'
+    
+    if (Index >= Tokens.Num() || Tokens[Index] != TEXT("("))
+    {
+        return nullptr;
+    }
+    ++Index; // Skip '('
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString ItemName = Tokens[Index++];
+    int32 Count = 1;
+    
+    // Optional count parameter
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT(","))
+    {
+        ++Index; // Skip ','
+        if (Index < Tokens.Num())
+        {
+            Count = FCString::Atoi(*Tokens[Index++]);
+        }
+    }
+    
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT(")"))
+    {
+        ++Index; // Skip ')'
+    }
+
+    UDialogueEffect_ModifyInventory* Effect = NewObject<UDialogueEffect_ModifyInventory>(this);
+    Effect->ItemId = FName(*ItemName);
+    Effect->DeltaCount = FMath::Abs(Count);
+    return Effect;
+}
+
+UDialogueEffect* UDialogueEffectExecutor::ParseRemoveItemEffect(const TArray<FString>& Tokens, int32& Index)
+{
+    ++Index; // Skip 'removeItem' or 'remove'
+    
+    if (Index >= Tokens.Num() || Tokens[Index] != TEXT("("))
+    {
+        return nullptr;
+    }
+    ++Index; // Skip '('
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString ItemName = Tokens[Index++];
+    int32 Count = 1;
+    
+    // Optional count parameter
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT(","))
+    {
+        ++Index; // Skip ','
+        if (Index < Tokens.Num())
+        {
+            Count = FCString::Atoi(*Tokens[Index++]);
+        }
+    }
+    
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT(")"))
+    {
+        ++Index; // Skip ')'
+    }
+
+    UDialogueEffect_ModifyInventory* Effect = NewObject<UDialogueEffect_ModifyInventory>(this);
+    Effect->ItemId = FName(*ItemName);
+    Effect->DeltaCount = -FMath::Abs(Count);
+    return Effect;
+}
+
+UDialogueEffect* UDialogueEffectExecutor::ParseMemoryEffect(const TArray<FString>& Tokens, int32& Index)
+{
+    ++Index; // Skip 'setMemory' or 'memory'
+    
+    if (Index >= Tokens.Num() || Tokens[Index] != TEXT("("))
+    {
+        return nullptr;
+    }
+    ++Index; // Skip '('
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString Key = Tokens[Index++];
+    bool Value = true;
+    
+    // Optional value parameter
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT(","))
+    {
+        ++Index; // Skip ','
+        if (Index < Tokens.Num())
+        {
+            FString ValueStr = Tokens[Index++].ToLower();
+            Value = (ValueStr == TEXT("true") || ValueStr == TEXT("1"));
+        }
+    }
+    
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT(")"))
+    {
+        ++Index; // Skip ')'
+    }
+
+    UDialogueEffect_SetMemory* Effect = NewObject<UDialogueEffect_SetMemory>(this);
+    Effect->MemoryKey = FName(*Key);
+    Effect->Value = Value;
+    return Effect;
+}
+
+UDialogueEffect* UDialogueEffectExecutor::ParseQuestEffect(const TArray<FString>& Tokens, int32& Index)
+{
+    ++Index; // Skip 'startQuest' or 'quest'
+    
+    if (Index >= Tokens.Num() || Tokens[Index] != TEXT("("))
+    {
+        return nullptr;
+    }
+    ++Index; // Skip '('
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString QuestId = Tokens[Index++];
+    
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT(")"))
+    {
+        ++Index; // Skip ')'
+    }
+
+    UDialogueEffect_StartQuest* Effect = NewObject<UDialogueEffect_StartQuest>(this);
+    Effect->QuestId = FName(*QuestId);
+    return Effect;
+}
+
+UDialogueEffect* UDialogueEffectExecutor::ParseCompleteQuestEffect(const TArray<FString>& Tokens, int32& Index)
+{
+    ++Index; // Skip 'completeQuest'
+    
+    if (Index >= Tokens.Num() || Tokens[Index] != TEXT("("))
+    {
+        return nullptr;
+    }
+    ++Index; // Skip '('
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString QuestId = Tokens[Index++];
+    
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT(")"))
+    {
+        ++Index; // Skip ')'
+    }
+
+    UDialogueEffect_CompleteQuest* Effect = NewObject<UDialogueEffect_CompleteQuest>(this);
+    Effect->QuestId = FName(*QuestId);
+    return Effect;
+}
+
+UDialogueEffect* UDialogueEffectExecutor::ParseAddTagEffect(const TArray<FString>& Tokens, int32& Index)
+{
+    ++Index; // Skip 'addTag'
+    
+    if (Index >= Tokens.Num() || Tokens[Index] != TEXT("("))
+    {
+        return nullptr;
+    }
+    ++Index; // Skip '('
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString TagName = Tokens[Index++];
+    
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT(")"))
+    {
+        ++Index; // Skip ')'
+    }
+
+    UDialogueEffect_AddWorldStateTag* Effect = NewObject<UDialogueEffect_AddWorldStateTag>(this);
+    Effect->TagToAdd = FGameplayTag::RequestGameplayTag(FName(*TagName), false);
+    return Effect;
+}
+
+UDialogueEffect* UDialogueEffectExecutor::ParseRemoveTagEffect(const TArray<FString>& Tokens, int32& Index)
+{
+    ++Index; // Skip 'removeTag'
+    
+    if (Index >= Tokens.Num() || Tokens[Index] != TEXT("("))
+    {
+        return nullptr;
+    }
+    ++Index; // Skip '('
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString TagName = Tokens[Index++];
+    
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT(")"))
+    {
+        ++Index; // Skip ')'
+    }
+
+    UDialogueEffect_RemoveWorldStateTag* Effect = NewObject<UDialogueEffect_RemoveWorldStateTag>(this);
+    Effect->TagToRemove = FGameplayTag::RequestGameplayTag(FName(*TagName), false);
+    return Effect;
+}
+
+UDialogueEffect* UDialogueEffectExecutor::ParseSetVariableEffect(const TArray<FString>& Tokens, int32& Index)
+{
+    ++Index; // Skip 'setVariable' or 'var'
+    
+    if (Index >= Tokens.Num() || Tokens[Index] != TEXT("("))
+    {
+        return nullptr;
+    }
+    ++Index; // Skip '('
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString Key = Tokens[Index++];
+    FString Value;
+    
+    // Required value parameter
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT(","))
+    {
+        ++Index; // Skip ','
+        if (Index < Tokens.Num())
+        {
+            Value = Tokens[Index++];
+        }
+    }
+    
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT(")"))
+    {
+        ++Index; // Skip ')'
+    }
+
+    UDialogueEffect_SetVariable* Effect = NewObject<UDialogueEffect_SetVariable>(this);
+    Effect->VariableKey = FName(*Key);
+    Effect->Value = Value;
+    return Effect;
+}
+
+UDialogueEffect* UDialogueEffectExecutor::ParseAffinityEffect(const TArray<FString>& Tokens, int32& Index)
+{
+    ++Index; // Skip 'affinity'
+    
+    if (Index >= Tokens.Num() || Tokens[Index] != TEXT("["))
+    {
+        return nullptr;
+    }
+    ++Index; // Skip '['
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString NPCName = Tokens[Index++];
+
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT("]"))
+    {
+        ++Index; // Skip ']'
+    }
+
+    // Expect operator (+=, -=, or =)
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString Operator = Tokens[Index++];
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    float Value = FCString::Atof(*Tokens[Index++]);
+
+    // Handle -= operator by negating the value
+    if (Operator == TEXT("-="))
+    {
+        Value = -Value;
+    }
+
+    UDialogueEffect_ModifyAffinity* Effect = NewObject<UDialogueEffect_ModifyAffinity>(this);
+    Effect->NPCName = FName(*NPCName);
+    Effect->DeltaValue = Value;
+    return Effect;
+}
+
+UDialogueEffect* UDialogueEffectExecutor::ParseTrustEffect(const TArray<FString>& Tokens, int32& Index)
+{
+    ++Index; // Skip 'trust'
+    
+    if (Index >= Tokens.Num() || Tokens[Index] != TEXT("["))
+    {
+        return nullptr;
+    }
+    ++Index; // Skip '['
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString NPCName = Tokens[Index++];
+
+    if (Index < Tokens.Num() && Tokens[Index] == TEXT("]"))
+    {
+        ++Index; // Skip ']'
+    }
+
+    // Expect operator (+=, -=, or =)
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString Operator = Tokens[Index++];
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    float Value = FCString::Atof(*Tokens[Index++]);
+
+    // Handle -= operator by negating the value
+    if (Operator == TEXT("-="))
+    {
+        Value = -Value;
+    }
+
+    UDialogueEffect_ModifyTrust* Effect = NewObject<UDialogueEffect_ModifyTrust>(this);
+    Effect->NPCName = FName(*NPCName);
+    Effect->DeltaValue = Value;
+    return Effect;
+}
+
+UDialogueEffect* UDialogueEffectExecutor::ParseGoldEffect(const TArray<FString>& Tokens, int32& Index)
+{
+    ++Index; // Skip 'gold'
+    
+    // Expect operator (+=, -=, or =)
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    FString Operator = Tokens[Index++];
+
+    if (Index >= Tokens.Num())
+    {
+        return nullptr;
+    }
+
+    int32 Value = FCString::Atoi(*Tokens[Index++]);
+
+    // Handle -= operator by negating the value
+    if (Operator == TEXT("-="))
+    {
+        Value = -Value;
+    }
+
+    UDialogueEffect_ModifyGold* Effect = NewObject<UDialogueEffect_ModifyGold>(this);
+    Effect->DeltaGold = Value;
+    return Effect;
 }
 
 UDialogueEffect* UDialogueEffectExecutor::ParseSingleEffect(const TArray<FString>& Tokens, int32& Index)
@@ -361,150 +830,77 @@ UDialogueEffect* UDialogueEffectExecutor::ParseSingleEffect(const TArray<FString
     }
 
     const FString& Token = Tokens[Index];
+    FString LowerToken = Token.ToLower();
 
-    // affinity[NPC] += Value
-    if (Token.ToLower() == TEXT("affinity"))
+    // Handle function-style effects
+    // giveItem(ItemId, Count) or give(ItemId, Count)
+    if (LowerToken == TEXT("giveitem") || LowerToken == TEXT("give"))
     {
-        ++Index;
-        if (Index < Tokens.Num() && Tokens[Index] == TEXT("["))
-        {
-            ++Index;
-            if (Index < Tokens.Num())
-            {
-                FString NPCName = Tokens[Index++];
-                
-                if (Index < Tokens.Num() && Tokens[Index] == TEXT("]"))
-                {
-                    ++Index;
-                }
+        return ParseGiveItemEffect(Tokens, Index);
+    }
 
-                if (Index < Tokens.Num() && Tokens[Index] == TEXT("+="))
-                {
-                    ++Index;
-                    if (Index < Tokens.Num())
-                    {
-                        float Value = FCString::Atof(*Tokens[Index++]);
+    // removeItem(ItemId, Count) or remove(ItemId, Count)
+    if (LowerToken == TEXT("removeitem") || LowerToken == TEXT("remove"))
+    {
+        return ParseRemoveItemEffect(Tokens, Index);
+    }
 
-                        UDialogueEffect_ModifyAffinity* Effect = NewObject<UDialogueEffect_ModifyAffinity>(this);
-                        Effect->NPCName = FName(*NPCName);
-                        Effect->DeltaValue = Value;
-                        return Effect;
-                    }
-                }
-            }
-        }
+    // setMemory(Key, Value) or memory(Key, Value)
+    if (LowerToken == TEXT("setmemory") || LowerToken == TEXT("memory"))
+    {
+        return ParseMemoryEffect(Tokens, Index);
+    }
+
+    // startQuest(QuestId) or quest(QuestId)
+    if (LowerToken == TEXT("startquest") || LowerToken == TEXT("quest"))
+    {
+        return ParseQuestEffect(Tokens, Index);
+    }
+
+    // completeQuest(QuestId)
+    if (LowerToken == TEXT("completequest"))
+    {
+        return ParseCompleteQuestEffect(Tokens, Index);
+    }
+
+    // addTag(TagName)
+    if (LowerToken == TEXT("addtag"))
+    {
+        return ParseAddTagEffect(Tokens, Index);
+    }
+
+    // removeTag(TagName)
+    if (LowerToken == TEXT("removetag"))
+    {
+        return ParseRemoveTagEffect(Tokens, Index);
+    }
+
+    // setVariable(Key, Value) or var(Key, Value)
+    if (LowerToken == TEXT("setvariable") || LowerToken == TEXT("var"))
+    {
+        return ParseSetVariableEffect(Tokens, Index);
+    }
+
+    // Handle bracket-style effects
+    // affinity[NPC] += Value
+    if (LowerToken == TEXT("affinity"))
+    {
+        return ParseAffinityEffect(Tokens, Index);
+    }
+
+    // trust[NPC] += Value
+    if (LowerToken == TEXT("trust"))
+    {
+        return ParseTrustEffect(Tokens, Index);
     }
 
     // gold += Value
-    if (Token.ToLower() == TEXT("gold"))
+    if (LowerToken == TEXT("gold"))
     {
-        ++Index;
-        if (Index < Tokens.Num() && Tokens[Index] == TEXT("+="))
-        {
-            ++Index;
-            if (Index < Tokens.Num())
-            {
-                int32 Value = FCString::Atoi(*Tokens[Index++]);
-
-                UDialogueEffect_ModifyGold* Effect = NewObject<UDialogueEffect_ModifyGold>(this);
-                Effect->DeltaGold = Value;
-                return Effect;
-            }
-        }
+        return ParseGoldEffect(Tokens, Index);
     }
 
-    // giveItem(ItemId, Count)
-    if (Token.ToLower() == TEXT("giveitem") || Token.ToLower() == TEXT("give"))
-    {
-        ++Index;
-        if (Index < Tokens.Num() && Tokens[Index] == TEXT("("))
-        {
-            ++Index;
-            if (Index < Tokens.Num())
-            {
-                FString ItemName = Tokens[Index++];
-                int32 Count = 1;
-                
-                if (Index < Tokens.Num() && Tokens[Index] == TEXT(","))
-                {
-                    ++Index;
-                    if (Index < Tokens.Num())
-                    {
-                        Count = FCString::Atoi(*Tokens[Index++]);
-                    }
-                }
-                
-                if (Index < Tokens.Num() && Tokens[Index] == TEXT(")"))
-                {
-                    ++Index;
-                }
-
-                UDialogueEffect_ModifyInventory* Effect = NewObject<UDialogueEffect_ModifyInventory>(this);
-                Effect->ItemId = FName(*ItemName);
-                Effect->DeltaCount = Count;
-                return Effect;
-            }
-        }
-    }
-
-    // setMemory(Key, Value)
-    if (Token.ToLower() == TEXT("setmemory") || Token.ToLower() == TEXT("memory"))
-    {
-        ++Index;
-        if (Index < Tokens.Num() && Tokens[Index] == TEXT("("))
-        {
-            ++Index;
-            if (Index < Tokens.Num())
-            {
-                FString Key = Tokens[Index++];
-                bool Value = true;
-                
-                if (Index < Tokens.Num() && Tokens[Index] == TEXT(","))
-                {
-                    ++Index;
-                    if (Index < Tokens.Num())
-                    {
-                        Value = Tokens[Index++].ToBool();
-                    }
-                }
-                
-                if (Index < Tokens.Num() && Tokens[Index] == TEXT(")"))
-                {
-                    ++Index;
-                }
-
-                UDialogueEffect_SetMemory* Effect = NewObject<UDialogueEffect_SetMemory>(this);
-                Effect->MemoryKey = FName(*Key);
-                Effect->Value = Value;
-                return Effect;
-            }
-        }
-    }
-
-    // startQuest(QuestId)
-    if (Token.ToLower() == TEXT("startquest") || Token.ToLower() == TEXT("quest"))
-    {
-        ++Index;
-        if (Index < Tokens.Num() && Tokens[Index] == TEXT("("))
-        {
-            ++Index;
-            if (Index < Tokens.Num())
-            {
-                FString QuestId = Tokens[Index++];
-                
-                if (Index < Tokens.Num() && Tokens[Index] == TEXT(")"))
-                {
-                    ++Index;
-                }
-
-                UDialogueEffect_StartQuest* Effect = NewObject<UDialogueEffect_StartQuest>(this);
-                Effect->QuestId = FName(*QuestId);
-                return Effect;
-            }
-        }
-    }
-
-    // If nothing else, skip
+    // If nothing matched, skip this token
     ++Index;
     return nullptr;
 }

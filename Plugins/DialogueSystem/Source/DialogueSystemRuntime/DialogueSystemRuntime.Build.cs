@@ -17,6 +17,7 @@ public class DialogueSystemRuntime : ModuleRules
 				"GameplayTags",
 				"Json",
 				"JsonUtilities",
+				"EnhancedInput",
 				"DialogueSystemCore"
 			}
 		);

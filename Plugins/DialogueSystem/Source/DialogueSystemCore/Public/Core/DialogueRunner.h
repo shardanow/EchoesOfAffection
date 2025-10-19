@@ -128,6 +128,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dialogue|Navigation")
     bool GoToNode(FName NodeId);
 
+    /** Перейти к конкретному узлу (по объекту) */
+    UFUNCTION(BlueprintCallable, Category = "Dialogue|Navigation")
+    bool JumpToNode(UDialogueNode* TargetNode);
+
     /** Выбрать вариант ответа (по индексу) */
     UFUNCTION(BlueprintCallable, Category = "Dialogue|Navigation")
     bool SelectChoice(int32 ChoiceIndex);
@@ -155,6 +159,10 @@ public:
     /** Активен ли диалог */
     UFUNCTION(BlueprintPure, Category = "Dialogue|State")
     bool IsActive() const { return bIsActive; }
+
+    /** Получить загруженный DialogueAsset */
+    UFUNCTION(BlueprintPure, Category = "Dialogue|State")
+    UDialogueDataAsset* GetLoadedDialogue() const { return LoadedDialogue; }
 
     /** Получить доступные варианты выбора */
     UFUNCTION(BlueprintCallable, Category = "Dialogue|State")

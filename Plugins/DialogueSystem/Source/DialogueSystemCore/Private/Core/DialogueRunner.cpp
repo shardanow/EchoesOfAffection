@@ -174,6 +174,16 @@ bool UDialogueRunner::GoToNode(FName NodeId)
     return true;
 }
 
+bool UDialogueRunner::JumpToNode(UDialogueNode* TargetNode)
+{
+    if (!TargetNode)
+    {
+        return false;
+    }
+    
+    return GoToNode(TargetNode->NodeId);
+}
+
 bool UDialogueRunner::SelectChoice(int32 ChoiceIndex)
 {
     if (!bIsActive || !CurrentNode)

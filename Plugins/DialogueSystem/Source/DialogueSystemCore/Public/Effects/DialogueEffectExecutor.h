@@ -267,7 +267,20 @@ protected:
     /** Парсинг одного эффекта */
     UDialogueEffect* ParseSingleEffect(const TArray<FString>& Tokens, int32& Index);
 
-    /** Кэш эффектов */
+    /** Helper methods for parsing specific effect types */
+    UDialogueEffect* ParseGiveItemEffect(const TArray<FString>& Tokens, int32& Index);
+    UDialogueEffect* ParseRemoveItemEffect(const TArray<FString>& Tokens, int32& Index);
+    UDialogueEffect* ParseMemoryEffect(const TArray<FString>& Tokens, int32& Index);
+    UDialogueEffect* ParseQuestEffect(const TArray<FString>& Tokens, int32& Index);
+    UDialogueEffect* ParseCompleteQuestEffect(const TArray<FString>& Tokens, int32& Index);
+    UDialogueEffect* ParseAddTagEffect(const TArray<FString>& Tokens, int32& Index);
+    UDialogueEffect* ParseRemoveTagEffect(const TArray<FString>& Tokens, int32& Index);
+    UDialogueEffect* ParseSetVariableEffect(const TArray<FString>& Tokens, int32& Index);
+    UDialogueEffect* ParseAffinityEffect(const TArray<FString>& Tokens, int32& Index);
+    UDialogueEffect* ParseTrustEffect(const TArray<FString>& Tokens, int32& Index);
+    UDialogueEffect* ParseGoldEffect(const TArray<FString>& Tokens, int32& Index);
+
+    /** ??? ???????? */
     UPROPERTY(Transient)
     TMap<FString, TObjectPtr<UDialogueEffect>> EffectCache;
 };
