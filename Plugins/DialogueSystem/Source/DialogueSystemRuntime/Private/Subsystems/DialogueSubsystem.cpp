@@ -98,6 +98,9 @@ UDialogueRunner* UDialogueSubsystem::StartDialogue_Implementation(UDialogueDataA
     CurrentNPC = NPC;
     PreviousNode = nullptr;
 
+    // ?? NEW: Broadcast BEFORE starting dialogue so UI can bind
+    OnDialogueAboutToStart.Broadcast(ActiveDialogue, Player, NPC);
+
     // Prepare participants array
     TArray<UObject*> Participants;
     Participants.Add(Player);
@@ -115,7 +118,7 @@ UDialogueRunner* UDialogueSubsystem::StartDialogue_Implementation(UDialogueDataA
         CurrentSaveGame->IncrementNodeVisit(DialogueAsset->DialogueId, DialogueAsset->StartNode);
     }
     
-    // Broadcast global event
+    // Broadcast global event (AFTER dialogue started)
     OnAnyDialogueStarted.Broadcast(ActiveDialogue, Player, NPC);
     
     UE_LOG(LogDialogueSubsystem, Log, TEXT("Started dialogue '%s'"), *DialogueAsset->DialogueId.ToString());

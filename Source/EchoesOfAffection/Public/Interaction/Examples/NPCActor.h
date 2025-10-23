@@ -11,8 +11,8 @@
 /**
  * Delegate for dialogue events
  */
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDialogueStarted, AActor*, TalkingTo);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDialogueEnded);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNPCDialogueStarted, AActor*, TalkingTo);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNPCDialogueEnded);
 
 /**
  * Example: Base class for NPCs that can be talked to
@@ -110,11 +110,11 @@ public:
 
 	/** Called when dialogue starts */
 	UPROPERTY(BlueprintAssignable, Category = "NPC|Events")
-	FOnDialogueStarted OnDialogueStarted;
+	FOnNPCDialogueStarted OnDialogueStarted;
 
 	/** Called when dialogue ends */
 	UPROPERTY(BlueprintAssignable, Category = "NPC|Events")
-	FOnDialogueEnded OnDialogueEnded;
+	FOnNPCDialogueEnded OnDialogueEnded;
 
 protected:
 	/** Is NPC currently in dialogue */

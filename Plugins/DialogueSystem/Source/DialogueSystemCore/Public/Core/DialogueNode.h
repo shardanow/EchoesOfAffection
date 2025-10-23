@@ -299,4 +299,12 @@ public:
     /** Get speaker name */
     UFUNCTION(BlueprintPure, Category = "Dialogue")
     FText GetSpeakerName() const { return FText::FromName(SpeakerId); }
+
+    /** Get emotion tag */
+    UFUNCTION(BlueprintPure, Category = "Dialogue")
+    FGameplayTag GetEmotionTag() const { return EmotionTag; }
+
+    /** Get speaker portrait */
+    UFUNCTION(BlueprintPure, Category = "Dialogue")
+    UTexture2D* GetSpeakerPortrait() const { return SpeakerPortrait.LoadSynchronous(); }
 };

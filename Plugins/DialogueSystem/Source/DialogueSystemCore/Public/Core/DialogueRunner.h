@@ -170,6 +170,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dialogue|Navigation")
     void Skip();
 
+    /** Continue to next node in dialogue flow (calls Skip internally) */
+    UFUNCTION(BlueprintCallable, Category = "Dialogue|Navigation")
+    void Continue() { Skip(); }
+
   //~ End Navigation
 
     //~ Begin Queries

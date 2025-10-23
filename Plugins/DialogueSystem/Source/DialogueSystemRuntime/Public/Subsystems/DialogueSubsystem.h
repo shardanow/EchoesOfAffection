@@ -52,6 +52,10 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "Dialogue|Events")
     FOnAnyDialogueStartedSignature OnAnyDialogueStarted;
 
+    /** Called BEFORE dialogue starts - allows UI setup */
+    UPROPERTY(BlueprintAssignable, Category = "Dialogue|Events")
+ FOnAnyDialogueStartedSignature OnDialogueAboutToStart;
+
     /** Called when ANY dialogue ends in the game (globally) */
     UPROPERTY(BlueprintAssignable, Category = "Dialogue|Events")
  FOnAnyDialogueEndedSignature OnAnyDialogueEnded;

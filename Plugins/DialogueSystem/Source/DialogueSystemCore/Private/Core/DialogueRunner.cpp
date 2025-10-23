@@ -348,8 +348,8 @@ void UDialogueRunner::Skip()
     // Check if we can skip
     if (!CanPerformOperation("Skip"))
     {
-   UE_LOG(LogTemp, Warning, TEXT("DialogueRunner::Skip - Cannot skip in state: %s"),
-     StateMachine ? *UEnum::GetValueAsString(StateMachine->GetCurrentState()) : TEXT("No StateMachine"));
+        UE_LOG(LogTemp, Warning, TEXT("DialogueRunner::Skip - Cannot skip in state: %s"),
+            StateMachine ? *UEnum::GetValueAsString(StateMachine->GetCurrentState()) : TEXT("No StateMachine"));
         return;
     }
 
@@ -364,28 +364,38 @@ void UDialogueRunner::Skip()
         World->GetTimerManager().ClearTimer(AutoAdvanceTimerHandle);
     }
     
-    // Compute next node based on current node type
+    // Special handling for End nodes - close dialogue when player continues
+    if (CurrentNode->NodeType == EDialogueNodeType::End)
+    {
+      EndDialogue();
+        return;
+    }
+    
+    // FIXED: Check for player choices FIRST before auto-advancing
+    // If there are choices, we should ALREADY be showing them (from ProcessNode)
+    // Don't broadcast again - that would create duplicate choice buttons!
+    TArray<UDialogueNode*> Choices = GetAvailableChoices();
+    if (Choices.Num() > 0)
+    {
+     // Choices exist but Skip was called - this means player tried to continue
+     // while choices are shown. This is invalid - just ignore the Skip call.
+        // The player should select a choice instead.
+   UE_LOG(LogTemp, Warning, TEXT("DialogueRunner::Skip - Cannot skip while choices are available. Player must select a choice."));
+        return;
+    }
+    
+    // No choices - compute next node based on current node type
     UDialogueNode* NextNode = ComputeNextNode(CurrentNode);
     
     if (NextNode)
-    {
+ {
         // If we have a single next node, go to it
         GoToNode(NextNode->NodeId);
-    }
+}
     else
     {
-        // If no direct next node, check for choices
-        TArray<UDialogueNode*> Choices = GetAvailableChoices();
-        if (Choices.Num() > 0)
-        {
-   // Show choices to player
-            OnChoicesReady.Broadcast(Choices);
-        }
-        else
-    {
-            // No choices and no next node - end dialogue
-       EndDialogue();
-        }
+   // No next node and no choices - end dialogue
+        EndDialogue();
     }
 }
 
@@ -532,19 +542,25 @@ void UDialogueRunner::ProcessNode(UDialogueNode* Node)
         break;
    
     case EDialogueNodeType::End:
- // FIXED: Broadcast event first
-   OnNodeEntered.Broadcast(Node);
-      
-     // CRITICAL: Transition back to Active BEFORE ending dialogue
-        // This ensures EndDialogue() can properly check state and transition to Ended
-     if (StateMachine && StateMachine->GetCurrentState() == EDialogueState::Transitioning)
-        {
-            StateMachine->TransitionTo(EDialogueState::Active, TEXT("End node - preparing to end dialogue"));
-        }
+        // Broadcast event first so UI can show the end node text
+        OnNodeEntered.Broadcast(Node);
         
-        // Now end dialogue (will transition Active -> Ended -> Idle)
-    EndDialogue();
-  return;
+// CRITICAL: Transition back to Active
+        // This allows UI to process the End node normally (show text, wait for input)
+ if (StateMachine && StateMachine->GetCurrentState() == EDialogueState::Transitioning)
+      {
+            StateMachine->TransitionTo(EDialogueState::Active, TEXT("End node - awaiting player confirmation"));
+        }
+     
+        // DON'T auto-close - let UI show continue indicator
+        // Player will manually close dialogue by clicking or pressing button
+  // The dialogue will end when player calls Continue()
+        
+     // Optional: Setup auto-close timer if configured
+      // This respects Node->bAutoAdvance and Node->AutoAdvanceDelay
+    SetupAutoAdvance(Node);
+      
+        return;
   
     default:
      break;
