@@ -40,21 +40,24 @@ FText UDialogueNode::GetResolvedText(const UDialogueSessionContext* Context) con
     // Simple placeholder replacement
     if (Context)
     {
-        // Replace {Player} with player name
-        if (Context->Player)
+        // Replace special placeholders
+        if (Context->GetPlayer())
         {
-            ResolvedString = ResolvedString.Replace(TEXT("{Player}"), *Context->Player->GetName());
+            ResolvedString = ResolvedString.Replace(TEXT("{Player}"), *Context->GetPlayer()->GetName());
         }
-
-        // Replace {Affinity} with current affinity level from context
-        FString AffinityString = FString::Printf(TEXT("%.0f"), Context->BaseAffinityLevel);
+  
+        // Replace {Affinity} with current affinity level
+        float Affinity = Context->GetParticipants() ? Context->GetParticipants()->GetBaseAffinityLevel() : 0.0f;
+        FString AffinityString = FString::Printf(TEXT("%.0f"), Affinity);
         ResolvedString = ResolvedString.Replace(TEXT("{Affinity}"), *AffinityString);
 
         // Replace custom variables
-        for (const TPair<FName, FString>& Pair : Context->CustomVariables)
+        TArray<FName> Keys = Context->GetVariables()->GetAllVariableKeys();
+        for (const FName& Key : Keys)
         {
-            FString Placeholder = FString::Printf(TEXT("{%s}"), *Pair.Key.ToString());
-            ResolvedString = ResolvedString.Replace(*Placeholder, *Pair.Value);
+            FString Placeholder = FString::Printf(TEXT("{%s}"), *Key.ToString());
+            FString Value = Context->GetCustomVariable(Key);
+            ResolvedString = ResolvedString.Replace(*Placeholder, *Value);
         }
     }
 

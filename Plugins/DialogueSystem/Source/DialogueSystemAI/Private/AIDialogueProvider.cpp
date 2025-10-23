@@ -245,25 +245,30 @@ FString UPromptBuilder::BuildContextPrompt(const UDialogueSessionContext* Contex
     FString ContextPrompt;
 
     // Add relationship context using BaseAffinityLevel instead
-    ContextPrompt += FString::Printf(TEXT("Current affinity level: %.0f\n"), Context->BaseAffinityLevel);
+    if (Context->GetParticipants())
+    {
+        ContextPrompt += FString::Printf(TEXT("Current affinity level: %.0f\n"), 
+   Context->GetParticipants()->GetBaseAffinityLevel());
+    }
 
     // Add player context
-    if (Context->Player)
+    if (Context->GetPlayer())
     {
-        ContextPrompt += TEXT("Speaking with: ");
-        ContextPrompt += Context->Player->GetName();
-        ContextPrompt += TEXT("\n");
+   ContextPrompt += TEXT("Speaking with: ");
+     ContextPrompt += Context->GetPlayer()->GetName();
+  ContextPrompt += TEXT("\n");
     }
 
     // Add conversation history
-    if (Context->ConversationHistory.Num() > 0)
+    if (Context->GetState() && Context->GetState()->GetConversationHistory().Num() > 0)
     {
         ContextPrompt += TEXT("\nRecent conversation:\n");
 
-        int32 Count = FMath::Min(Context->ConversationHistory.Num(), 5);
-        for (int32 i = Context->ConversationHistory.Num() - Count; i < Context->ConversationHistory.Num(); ++i)
+        const TArray<FConversationEntry>& History = Context->GetState()->GetConversationHistory();
+        int32 Count = FMath::Min(History.Num(), 5);
+        for (int32 i = History.Num() - Count; i < History.Num(); ++i)
         {
-            const FConversationEntry& Entry = Context->ConversationHistory[i];
+            const FConversationEntry& Entry = History[i];
             ContextPrompt += TEXT("- ");
             ContextPrompt += Entry.SpeakerName.ToString();
             ContextPrompt += TEXT(": ");

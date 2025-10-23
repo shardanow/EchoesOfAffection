@@ -326,21 +326,28 @@ void UDialoguePresentationComponent::OnDialogueStarted(UDialogueRunner* Runner)
 	// Try to get target NPC from dialogue runner's context
 	AActor* TargetNPC = nullptr;
 	
-	if (UDialogueSessionContext* Context = Runner->GetContext())
+	// Определяем направление камеры
+	UDialogueSessionContext* Context = Runner->GetContext();
+	if (Context)
 	{
-		// If we're on the player, target the NPC
-		// If we're on the NPC, this shouldn't activate (player's presentation component should handle it)
 		AActor* Owner = GetOwner();
-		if (Owner == Context->Player)
+		
+		// Определяем, кто говорит
+		if (Owner == Context->GetPlayer())
 		{
-			TargetNPC = Context->NPC;
+			TargetNPC = Context->GetNPC();
 		}
-		else if (Owner == Context->NPC)
+		else if (Owner == Context->GetNPC())
 		{
-			// We're on the NPC - don't activate presentation
-			// The player's presentation component will handle it
-			return;
+			TargetNPC = Context->GetPlayer();
 		}
+	}
+		
+	// Если определили цель, настраиваем камеру
+	if (TargetNPC && CameraComponent)
+	{
+		FDialogueCameraSettings DefaultSettings;
+		CameraComponent->ActivateDialogueCamera(TargetNPC, DefaultSettings);
 	}
 	
 	// Fallback: try to get from cached dialogue component

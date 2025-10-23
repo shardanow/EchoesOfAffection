@@ -81,6 +81,12 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
     bool bEnableTypewriter = true;
 
+    UPROPERTY(EditAnywhere, Category = "Dialogue|Typewriter", meta = (ClampMin = "1.0"))
+    float CharactersPerSecond = 30.0f;
+
+    // внутренний аккумулятор дробной части
+    float TypewriterAccum = 0.0f;
+
     /** Показывать портрет */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
     bool bShowPortrait = true;

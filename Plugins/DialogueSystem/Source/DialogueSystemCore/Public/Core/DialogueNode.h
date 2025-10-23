@@ -189,7 +189,8 @@ struct DIALOGUESYSTEMCORE_API FDialogueEdgeData
  * Runtime представление узла (создаётся из FDialogueNodeData)
  * Добавляет состояние и кэшированные данные
  */
-UCLASS(BlueprintType)
+//UCLASS(BlueprintType)
+UCLASS(EditInlineNew, DefaultToInstanced, BlueprintType, Blueprintable)
 class DIALOGUESYSTEMCORE_API UDialogueNode : public UObject
 {
     GENERATED_BODY()

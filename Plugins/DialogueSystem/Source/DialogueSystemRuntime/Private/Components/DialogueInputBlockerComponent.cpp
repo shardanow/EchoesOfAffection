@@ -18,53 +18,32 @@ UDialogueInputBlockerComponent::UDialogueInputBlockerComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
 
-	// Setup default legacy input blocking lists
 	LegacyActionNamesToBlock = {
-		TEXT("Jump"),
-		TEXT("Crouch"),
-		TEXT("Sprint"),
-		TEXT("Interact"),
-		TEXT("Fire"),
-		TEXT("Aim"),
-		TEXT("Reload"),
-		TEXT("Use")
+		TEXT("Jump"), TEXT("Crouch"), TEXT("Sprint"), TEXT("Interact"),
+		TEXT("Fire"), TEXT("Aim"), TEXT("Reload"), TEXT("Use")
 	};
 
 	LegacyAxisNamesToBlock = {
-		TEXT("MoveForward"),
-		TEXT("MoveRight"),
-		TEXT("Turn"),
-		TEXT("LookUp"),
-		TEXT("TurnRate"),
-		TEXT("LookUpRate")
+		TEXT("MoveForward"), TEXT("MoveRight"), TEXT("Turn"), TEXT("LookUp"),
+		TEXT("TurnRate"), TEXT("LookUpRate")
 	};
 }
 
 void UDialogueInputBlockerComponent::BeginPlay()
 {
 	Super::BeginPlay();
-
-	// Cache player controller
-	UWorld* World = GetWorld();
-	if (World)
-	{
-		APlayerController* PC = World->GetFirstPlayerController();
-		if (PC)
-		{
-			CachedPlayerController = PC;
-			CachedPlayerPawn = PC->GetPawn();
-		}
-	}
+	
+	// Don't cache PC here - get it dynamically when needed
+	// This is important when component is on NPC and controls player input
 }
 
 void UDialogueInputBlockerComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	// Ensure input is unblocked on component destruction
-	if (bInputBlocked)
+	// Не пытаемся разблокировать если мир уничтожается
+	if (bInputBlocked && EndPlayReason != EEndPlayReason::EndPlayInEditor && EndPlayReason != EEndPlayReason::Quit)
 	{
 		UnblockInput();
 	}
-
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -88,22 +67,62 @@ bool UDialogueInputBlockerComponent::BlockInput(const FDialogueInputBlockingSett
 		CachedPlayerController = PC;
 	}
 
-	// Update cached pawn reference
 	if (PC->GetPawn())
 	{
 		CachedPlayerPawn = PC->GetPawn();
 	}
 
-	// Store current pawn state
 	if (CachedPlayerPawn.IsValid())
 	{
 		StorePawnState();
 	}
 
-	// Apply input blocking
+	// Store original mouse/UI state
+	bOriginalShowMouseCursor = PC->bShowMouseCursor;
+	bOriginalEnableClickEvents = PC->bEnableClickEvents;
+	bOriginalEnableMouseOverEvents = PC->bEnableMouseOverEvents;
+
+	// Determine current input mode (simplified detection)
+	if (PC->bShowMouseCursor)
+	{
+		OriginalInputMode = PC->bEnableClickEvents ? EInputMode::GameAndUI : EInputMode::GameOnly;
+	}
+	else
+	{
+		OriginalInputMode = EInputMode::GameOnly;
+	}
+
+	// Apply mouse cursor settings
+	if (Settings.bShowMouseCursor)
+	{
+		PC->bShowMouseCursor = true;
+		UE_LOG(LogDialogueInput, Verbose, TEXT("Mouse cursor shown"));
+	}
+
+	if (Settings.bEnableClickEvents)
+	{
+		PC->bEnableClickEvents = true;
+		UE_LOG(LogDialogueInput, Verbose, TEXT("Click events enabled"));
+	}
+
+	if (Settings.bEnableMouseOverEvents)
+	{
+		PC->bEnableMouseOverEvents = true;
+		UE_LOG(LogDialogueInput, Verbose, TEXT("Mouse over events enabled"));
+	}
+
+	// Set input mode for dialogue (UI + Game for clicking dialogue options)
+	if (Settings.bShowMouseCursor)
+	{
+		FInputModeGameAndUI InputMode;
+		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		InputMode.SetHideCursorDuringCapture(false);
+		PC->SetInputMode(InputMode);
+		UE_LOG(LogDialogueInput, Verbose, TEXT("Set input mode to Game And UI for dialogue"));
+	}
+
 	ApplyInputBlocking(Settings);
 
-	// Handle pawn state
 	if (Settings.bDisablePawnMovement)
 	{
 		BlockPawnMovement(true);
@@ -135,21 +154,93 @@ void UDialogueInputBlockerComponent::UnblockInput()
 {
 	if (!bInputBlocked)
 	{
+		UE_LOG(LogDialogueInput, Warning, TEXT("UnblockInput called but input is not blocked"));
 		return;
 	}
 
-	// Restore input
+	// ВАЖНО: Всегда получаем свежий PlayerController
+	APlayerController* PC = FindPlayerController();
+	if (!PC)
+	{
+		UE_LOG(LogDialogueInput, Error, TEXT("UnblockInput: No valid PlayerController found"));
+		bInputBlocked = false;
+		return;
+	}
+	
+	UE_LOG(LogDialogueInput, Log, TEXT("=== UnblockInput START for PC: %s ==="), *PC->GetName());
+	
+	// CRITICAL: Clear accumulated input
+	if (PC->PlayerInput)
+	{
+		PC->PlayerInput->FlushPressedKeys();
+		UE_LOG(LogDialogueInput, Verbose, TEXT("Flushed pressed keys"));
+	}
+	else
+	{
+		UE_LOG(LogDialogueInput, Error, TEXT("PlayerInput is NULL!"));
+	}
+	
+	// Restore mouse cursor state
+	PC->bShowMouseCursor = bOriginalShowMouseCursor;
+	PC->bEnableClickEvents = bOriginalEnableClickEvents;
+	PC->bEnableMouseOverEvents = bOriginalEnableMouseOverEvents;
+	
+	UE_LOG(LogDialogueInput, Verbose, TEXT("Restored mouse cursor state - Show: %d, Click: %d, MouseOver: %d"),
+		bOriginalShowMouseCursor, bOriginalEnableClickEvents, bOriginalEnableMouseOverEvents);
+	
+	// CRITICAL FIX: Reset input mode to Game Only
+	// This removes UI focus and returns control to the game
+	if (!bOriginalShowMouseCursor)
+	{
+		FInputModeGameOnly InputMode;
+		PC->SetInputMode(InputMode);
+		UE_LOG(LogDialogueInput, Verbose, TEXT("Set input mode to Game Only"));
+	}
+	else
+	{
+		// If cursor was originally visible, use GameAndUI mode
+		FInputModeGameAndUI InputMode;
+		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		PC->SetInputMode(InputMode);
+		UE_LOG(LogDialogueInput, Verbose, TEXT("Set input mode to Game And UI"));
+	}
+	
+	// Проверка состояния ПЕРЕД восстановлением
+	UE_LOG(LogDialogueInput, Log, TEXT("BEFORE Restore - MoveIgnored: %d, LookIgnored: %d"), 
+		PC->IsMoveInputIgnored(), PC->IsLookInputIgnored());
+
 	RestoreInput();
 
-	// Restore pawn state
+	// Проверка состояния ПОСЛЕ восстановления
+	UE_LOG(LogDialogueInput, Log, TEXT("AFTER Restore - MoveIgnored: %d, LookIgnored: %d"), 
+		PC->IsMoveInputIgnored(), PC->IsLookInputIgnored());
+
 	if (DefaultBlockingSettings.bRestorePawnState && CachedPlayerPawn.IsValid())
 	{
 		RestorePawnState();
+		UE_LOG(LogDialogueInput, Verbose, TEXT("Restored pawn state"));
+	}
+
+	// Additional cleanup: reset controller rotation input
+	PC->ResetIgnoreLookInput();
+	PC->ResetIgnoreMoveInput();
+	
+	UE_LOG(LogDialogueInput, Log, TEXT("AFTER Reset - MoveIgnored: %d, LookIgnored: %d"), 
+		PC->IsMoveInputIgnored(), PC->IsLookInputIgnored());
+	
+	// Проверка Enhanced Input состояния
+	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer()))
+	{
+		UE_LOG(LogDialogueInput, Log, TEXT("Enhanced Input Subsystem exists"));
+	}
+	else
+	{
+		UE_LOG(LogDialogueInput, Warning, TEXT("Enhanced Input Subsystem is NULL!"));
 	}
 
 	bInputBlocked = false;
 
-	UE_LOG(LogDialogueInput, Log, TEXT("Input unblocked"));
+	UE_LOG(LogDialogueInput, Log, TEXT("=== UnblockInput END - Success ==="));
 }
 
 void UDialogueInputBlockerComponent::UpdateBlockingMode(EInputBlockingMode NewMode)
@@ -159,14 +250,10 @@ void UDialogueInputBlockerComponent::UpdateBlockingMode(EInputBlockingMode NewMo
 		return;
 	}
 
-	// Update settings and reapply blocking
 	FDialogueInputBlockingSettings NewSettings = DefaultBlockingSettings;
 	NewSettings.BlockingMode = NewMode;
 
-	// First restore current state
 	RestoreInput();
-
-	// Then apply new blocking
 	ApplyInputBlocking(NewSettings);
 
 	DefaultBlockingSettings = NewSettings;
@@ -179,10 +266,7 @@ void UDialogueInputBlockerComponent::AllowInputAction(FName ActionName)
 		return;
 	}
 
-	// Remove from blocking lists
 	LegacyActionNamesToBlock.Remove(ActionName);
-
-	// TODO: Implement for Enhanced Input System
 }
 
 void UDialogueInputBlockerComponent::SetDefaultBlockingSettings(const FDialogueInputBlockingSettings& Settings)
@@ -192,17 +276,14 @@ void UDialogueInputBlockerComponent::SetDefaultBlockingSettings(const FDialogueI
 
 void UDialogueInputBlockerComponent::ApplyInputBlocking(const FDialogueInputBlockingSettings& Settings)
 {
-	// Populate legacy blocking lists based on settings
 	PopulateLegacyBlockingLists(Settings);
 
-	// Try Enhanced Input first (UE5 standard)
 	if (IsEnhancedInputAvailable())
 	{
 		BlockEnhancedInput(Settings);
 	}
 	else
 	{
-		// Fallback to legacy input
 		BlockLegacyInput(Settings);
 	}
 }
@@ -210,47 +291,52 @@ void UDialogueInputBlockerComponent::ApplyInputBlocking(const FDialogueInputBloc
 void UDialogueInputBlockerComponent::BlockEnhancedInput(const FDialogueInputBlockingSettings& Settings)
 {
 	APlayerController* PC = CachedPlayerController.Get();
-	if (!PC)
+	if (!PC || !PC->GetLocalPlayer())
 	{
+		UE_LOG(LogDialogueInput, Error, TEXT("BlockEnhancedInput: Invalid PC or LocalPlayer"));
 		return;
 	}
 
 	UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer());
 	if (!Subsystem)
 	{
+		UE_LOG(LogDialogueInput, Error, TEXT("BlockEnhancedInput: No Enhanced Input Subsystem"));
 		return;
 	}
 
-	// Store current mapping contexts
-	StoredMappingContexts.Empty();
-	StoredMappingPriorities.Empty();
+	UE_LOG(LogDialogueInput, Log, TEXT("=== BlockEnhancedInput START ==="));
 
-	// Get all active mapping contexts
-	TArray<FEnhancedActionKeyMapping> Mappings = Subsystem->GetAllPlayerMappableActionKeyMappings();
-	
-	// Based on blocking mode, remove specific contexts
-	if (Settings.BlockingMode == EInputBlockingMode::BlockAll)
-	{
-		// Clear all mapping contexts except dialogue
-		Subsystem->ClearAllMappings();
-	}
-	else
-	{
-		// Selective blocking - more complex logic needed
-		// This would require knowledge of specific input action names
-		// For now, we'll use legacy input as fallback
-		UE_LOG(LogDialogueInput, Warning, TEXT("Selective Enhanced Input blocking not fully implemented, using legacy fallback"));
-	}
+	// НОВЫЙ ПОДХОД: НЕ очищаем контексты, а добавляем диалоговый с высоким приоритетом
+	// Это позволяет диалоговым действиям перекрыть все остальные без удаления контекстов
 
-	// Add dialogue-specific input mapping context if provided
 	if (DialogueInputMappingContext.IsValid())
 	{
 		UInputMappingContext* Context = DialogueInputMappingContext.LoadSynchronous();
 		if (Context)
 		{
-			Subsystem->AddMappingContext(Context, DialogueInputPriority);
+			const int32 HighPriority = 1000;
+			
+			UE_LOG(LogDialogueInput, Log, TEXT("Adding dialogue context: %s with priority %d"), 
+				*Context->GetName(), HighPriority);
+			
+			Subsystem->AddMappingContext(Context, HighPriority);
+			
+			UE_LOG(LogDialogueInput, Log, TEXT("? Dialogue input mapping context added successfully"));
+		}
+		else
+		{
+			UE_LOG(LogDialogueInput, Error, TEXT("Failed to load DialogueInputMappingContext!"));
+			BlockLegacyInput(Settings);
 		}
 	}
+	else
+	{
+		// Если нет диалогового контекста, блокируем через Legacy метод
+		UE_LOG(LogDialogueInput, Warning, TEXT("No dialogue input mapping context - using legacy blocking"));
+		BlockLegacyInput(Settings);
+	}
+	
+	UE_LOG(LogDialogueInput, Log, TEXT("=== BlockEnhancedInput END ==="));
 }
 
 void UDialogueInputBlockerComponent::BlockLegacyInput(const FDialogueInputBlockingSettings& Settings)
@@ -261,28 +347,23 @@ void UDialogueInputBlockerComponent::BlockLegacyInput(const FDialogueInputBlocki
 		return;
 	}
 
-	UInputComponent* InputComp = PC->InputComponent;
-
-	// Block action bindings
-	for (const FName& ActionName : LegacyActionNamesToBlock)
-	{
-		// Find and disable action bindings
-		for (int32 i = InputComp->GetNumActionBindings() - 1; i >= 0; --i)
-		{
-			FInputActionBinding& Binding = InputComp->GetActionBinding(i);
-			if (Binding.GetActionName() == ActionName)
-			{
-				// Store original binding for restoration
-				// Note: Actual disabling would require modifying the binding
-				// For safety, we'll just note this limitation
-			}
-		}
-	}
-
-	// Disable input temporarily
 	if (Settings.BlockingMode == EInputBlockingMode::BlockAll)
 	{
 		PC->DisableInput(PC);
+	}
+	else
+	{
+		if (Settings.bBlockMovement || Settings.BlockingMode == EInputBlockingMode::BlockMovement ||
+			Settings.BlockingMode == EInputBlockingMode::BlockMovementAndCamera)
+		{
+			PC->SetIgnoreMoveInput(true);
+		}
+
+		if (Settings.bBlockCamera || Settings.BlockingMode == EInputBlockingMode::BlockCamera ||
+			Settings.BlockingMode == EInputBlockingMode::BlockMovementAndCamera)
+		{
+			PC->SetIgnoreLookInput(true);
+		}
 	}
 }
 
@@ -301,30 +382,47 @@ void UDialogueInputBlockerComponent::RestoreInput()
 void UDialogueInputBlockerComponent::RestoreEnhancedInput()
 {
 	APlayerController* PC = CachedPlayerController.Get();
-	if (!PC)
+	if (!PC || !PC->GetLocalPlayer())
 	{
+		UE_LOG(LogDialogueInput, Error, TEXT("RestoreEnhancedInput: Invalid PC or LocalPlayer"));
 		return;
 	}
 
 	UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer());
 	if (!Subsystem)
 	{
+		UE_LOG(LogDialogueInput, Error, TEXT("RestoreEnhancedInput: No Enhanced Input Subsystem"));
 		return;
 	}
 
-	// Remove dialogue input mapping context
+	UE_LOG(LogDialogueInput, Log, TEXT("=== RestoreEnhancedInput START ==="));
+
+	// Просто удаляем диалоговый контекст - все остальные контексты остались нетронутыми
 	if (DialogueInputMappingContext.IsValid())
 	{
 		UInputMappingContext* Context = DialogueInputMappingContext.Get();
 		if (Context)
 		{
+			UE_LOG(LogDialogueInput, Log, TEXT("Removing dialogue context: %s"), *Context->GetName());
 			Subsystem->RemoveMappingContext(Context);
+			UE_LOG(LogDialogueInput, Log, TEXT("Removed dialogue input mapping context"));
+		}
+		else
+		{
+			UE_LOG(LogDialogueInput, Warning, TEXT("DialogueInputMappingContext is valid but Get() returned NULL"));
 		}
 	}
+	else
+	{
+		// Если не было диалогового контекста, восстанавливаем Legacy
+		UE_LOG(LogDialogueInput, Warning, TEXT("No dialogue input mapping context - restoring legacy input"));
+		RestoreLegacyInput();
+	}
 
-	// Restore original mapping contexts
-	// Note: This requires storing them during blocking
-	// For simplicity, we're assuming game will restore its own contexts
+	StoredMappingContexts.Empty();
+	StoredMappingPriorities.Empty();
+	
+	UE_LOG(LogDialogueInput, Log, TEXT("=== RestoreEnhancedInput END - Original contexts should be active ==="));
 }
 
 void UDialogueInputBlockerComponent::RestoreLegacyInput()
@@ -335,9 +433,8 @@ void UDialogueInputBlockerComponent::RestoreLegacyInput()
 		return;
 	}
 
-	// Re-enable input
 	PC->ResetIgnoreInputFlags();
-	PC->bShowMouseCursor = false; // Reset if needed
+	PC->EnableInput(PC);
 }
 
 void UDialogueInputBlockerComponent::BlockPawnMovement(bool bBlock)
@@ -354,10 +451,7 @@ void UDialogueInputBlockerComponent::BlockPawnMovement(bool bBlock)
 		{
 			if (bBlock)
 			{
-				// Store original movement mode
 				OriginalMovementMode = (uint8)MoveComp->MovementMode;
-				
-				// Disable movement
 				MoveComp->DisableMovement();
 				MoveComp->StopMovementImmediately();
 			}
@@ -373,18 +467,12 @@ void UDialogueInputBlockerComponent::BlockPawnRotation(bool bBlock)
 		return;
 	}
 
-	if (AController* Controller = Pawn->GetController())
+	if (bBlock)
 	{
-		if (bBlock)
-		{
-			// Store original state
-			bOriginalRotationEnabled = Pawn->bUseControllerRotationYaw;
-			
-			// Disable rotation
-			Pawn->bUseControllerRotationYaw = false;
-			Pawn->bUseControllerRotationPitch = false;
-			Pawn->bUseControllerRotationRoll = false;
-		}
+		bOriginalRotationEnabled = Pawn->bUseControllerRotationYaw;
+		Pawn->bUseControllerRotationYaw = false;
+		Pawn->bUseControllerRotationPitch = false;
+		Pawn->bUseControllerRotationRoll = false;
 	}
 }
 
@@ -418,6 +506,11 @@ void UDialogueInputBlockerComponent::StorePawnState()
 			OriginalMovementMode = (uint8)MoveComp->MovementMode;
 		}
 	}
+
+	UE_LOG(LogDialogueInput, Verbose, TEXT("Stored pawn state - Visibility: %s, Rotation: %s, MovementMode: %d"),
+		bOriginalPawnVisibility ? TEXT("Visible") : TEXT("Hidden"),
+		bOriginalRotationEnabled ? TEXT("Enabled") : TEXT("Disabled"),
+		OriginalMovementMode);
 }
 
 void UDialogueInputBlockerComponent::RestorePawnState()
@@ -428,13 +521,16 @@ void UDialogueInputBlockerComponent::RestorePawnState()
 		return;
 	}
 
-	// Restore visibility
 	SetPawnVisibility(bOriginalPawnVisibility);
 
-	// Restore rotation
 	Pawn->bUseControllerRotationYaw = bOriginalRotationEnabled;
 
-	// Restore movement
+	if (bOriginalRotationEnabled)
+	{
+		Pawn->bUseControllerRotationPitch = false;
+		Pawn->bUseControllerRotationRoll = false;
+	}
+
 	if (ACharacter* Character = Cast<ACharacter>(Pawn))
 	{
 		if (UCharacterMovementComponent* MoveComp = Character->GetCharacterMovement())
@@ -442,19 +538,21 @@ void UDialogueInputBlockerComponent::RestorePawnState()
 			MoveComp->SetMovementMode((EMovementMode)OriginalMovementMode);
 		}
 	}
+
+	UE_LOG(LogDialogueInput, Verbose, TEXT("Restored pawn state - Visibility: %s, Rotation: %s, MovementMode: %d"),
+		bOriginalPawnVisibility ? TEXT("Visible") : TEXT("Hidden"),
+		bOriginalRotationEnabled ? TEXT("Enabled") : TEXT("Disabled"),
+		OriginalMovementMode);
 }
 
 void UDialogueInputBlockerComponent::PopulateLegacyBlockingLists(const FDialogueInputBlockingSettings& Settings)
 {
-	// Clear existing lists
 	LegacyActionNamesToBlock.Empty();
 	LegacyAxisNamesToBlock.Empty();
 
-	// Add based on blocking mode
 	switch (Settings.BlockingMode)
 	{
 	case EInputBlockingMode::BlockAll:
-		// Block everything except dialogue-specific actions
 		LegacyActionNamesToBlock = {
 			TEXT("Jump"), TEXT("Crouch"), TEXT("Sprint"), TEXT("Interact"),
 			TEXT("Fire"), TEXT("Aim"), TEXT("Reload"), TEXT("Use"),
@@ -493,24 +591,18 @@ void UDialogueInputBlockerComponent::PopulateLegacyBlockingLists(const FDialogue
 		break;
 
 	case EInputBlockingMode::BlockMovementAndCamera:
-		// Combine movement and camera blocking
 		PopulateLegacyBlockingLists(FDialogueInputBlockingSettings{ EInputBlockingMode::BlockMovement });
 		{
 			FDialogueInputBlockingSettings CameraSettings;
 			CameraSettings.BlockingMode = EInputBlockingMode::BlockCamera;
-			
-			TArray<FName> CameraActions;
-			TArray<FName> CameraAxes;
-			// Temporarily store current lists
+
 			TArray<FName> TempActions = LegacyActionNamesToBlock;
 			TArray<FName> TempAxes = LegacyAxisNamesToBlock;
-			
-			// Get camera blocking lists
+
 			PopulateLegacyBlockingLists(CameraSettings);
-			CameraActions = LegacyActionNamesToBlock;
-			CameraAxes = LegacyAxisNamesToBlock;
-			
-			// Combine
+			TArray<FName> CameraActions = LegacyActionNamesToBlock;
+			TArray<FName> CameraAxes = LegacyAxisNamesToBlock;
+
 			LegacyActionNamesToBlock = TempActions;
 			LegacyAxisNamesToBlock = TempAxes;
 			LegacyActionNamesToBlock.Append(CameraActions);
@@ -519,7 +611,6 @@ void UDialogueInputBlockerComponent::PopulateLegacyBlockingLists(const FDialogue
 		break;
 
 	case EInputBlockingMode::Custom:
-		// Use custom settings
 		if (Settings.bBlockMovement)
 		{
 			LegacyAxisNamesToBlock.Add(TEXT("MoveForward"));
@@ -561,7 +652,6 @@ void UDialogueInputBlockerComponent::PopulateLegacyBlockingLists(const FDialogue
 		break;
 
 	case EInputBlockingMode::AllowAll:
-		// Don't block anything
 		break;
 	}
 }
@@ -569,11 +659,12 @@ void UDialogueInputBlockerComponent::PopulateLegacyBlockingLists(const FDialogue
 APlayerController* UDialogueInputBlockerComponent::FindPlayerController() const
 {
 	UWorld* World = GetWorld();
-	if (World)
+	if (!World || World->bIsTearingDown)
 	{
-		return World->GetFirstPlayerController();
+		return nullptr;
 	}
-	return nullptr;
+	
+	return World->GetFirstPlayerController();
 }
 
 bool UDialogueInputBlockerComponent::IsEnhancedInputAvailable() const

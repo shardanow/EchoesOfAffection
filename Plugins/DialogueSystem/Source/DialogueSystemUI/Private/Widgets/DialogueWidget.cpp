@@ -34,6 +34,8 @@ void UDialogueWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 
 void UDialogueWidget::BindToRunner(UDialogueRunner* Runner)
 {
+	UE_LOG(LogTemp, Log, TEXT("UDialogueWidget::BindToRunner called"));
+
     if (!Runner)
     {
         return;
@@ -47,6 +49,12 @@ void UDialogueWidget::BindToRunner(UDialogueRunner* Runner)
     Runner->OnNodeEntered.AddDynamic(this, &UDialogueWidget::HandleNodeEntered);
     Runner->OnChoicesReady.AddDynamic(this, &UDialogueWidget::HandleChoicesReady);
     Runner->OnDialogueEnded.AddDynamic(this, &UDialogueWidget::HandleDialogueEnded);
+
+    if (UDialogueNode* CurrentNode = Runner->GetCurrentNode())
+    {
+        HandleNodeEntered(CurrentNode);
+		HandleChoicesReady(Runner->GetAvailableChoices());    
+    }
 
     PlayIntroAnimation();
 }
@@ -89,6 +97,8 @@ void UDialogueWidget::SelectChoice(int32 Index)
 
 void UDialogueWidget::HandleNodeEntered(UDialogueNode* Node)
 {
+	UE_LOG(LogTemp, Log, TEXT("UDialogueWidget::HandleNodeEntered called"));
+
     if (!Node)
     {
         return;
@@ -163,11 +173,13 @@ void UDialogueWidget::StartTypewriter(const FText& Text)
     FullText = Text.ToString();
     VisibleText = TEXT("");
     CurrentCharIndex = 0;
+    TypewriterAccum = 0.0f;               
     bIsTyping = bEnableTypewriter && !FullText.IsEmpty();
 
     if (!bEnableTypewriter)
     {
         VisibleText = FullText;
+        CurrentCharIndex = FullText.Len();
     }
 
     if (DialogueText)
@@ -183,23 +195,44 @@ void UDialogueWidget::UpdateTypewriter(float DeltaTime)
         return;
     }
 
-    // Get typewriter speed from subsystem or use default
-    float CharactersPerSecond = 30.0f; // Default speed
-
-    float CharsToAdd = CharactersPerSecond * DeltaTime;
-    CurrentCharIndex += FMath::FloorToInt(CharsToAdd);
-
-    if (CurrentCharIndex >= FullText.Len())
+    if (CharactersPerSecond <= 0.f)
     {
+        // защита: мгновенно показать весь текст
+        VisibleText = FullText;
         CurrentCharIndex = FullText.Len();
         bIsTyping = false;
+        if (DialogueText) { DialogueText->SetText(FText::FromString(VisibleText)); }
+        return;
     }
 
+    // накапливаем дробную часть, чтобы не тер€ть <1 символа за кадр
+    TypewriterAccum += CharactersPerSecond * DeltaTime;
+
+    const int32 Step = FMath::FloorToInt(TypewriterAccum);
+    if (Step <= 0)
+    {
+        return; // ещЄ не набежал целый символ Ч ждЄм
+    }
+
+    TypewriterAccum -= Step; // оставл€ем хвост на следующий кадр
+
+    const int32 NewIndex = FMath::Min(CurrentCharIndex + Step, FullText.Len());
+    if (NewIndex == CurrentCharIndex)
+    {
+        return;
+    }
+
+    CurrentCharIndex = NewIndex;
     VisibleText = FullText.Left(CurrentCharIndex);
 
     if (DialogueText)
     {
         DialogueText->SetText(FText::FromString(VisibleText));
+    }
+
+    if (CurrentCharIndex >= FullText.Len())
+    {
+        bIsTyping = false;
     }
 }
 

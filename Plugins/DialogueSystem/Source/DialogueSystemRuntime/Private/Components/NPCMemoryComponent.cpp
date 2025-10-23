@@ -152,6 +152,32 @@ void UNPCMemoryComponent::RecallMemory(FName MemoryId)
 	}
 }
 
+bool UNPCMemoryComponent::AddTagsToMemory(FName MemoryId, const FGameplayTagContainer& Tags)
+{
+	FNPCMemoryEntry* Found = Memories.FindByPredicate([&](const FNPCMemoryEntry& Entry)
+	{
+		return Entry.MemoryId == MemoryId;
+	});
+	
+	if (Found)
+	{
+		// Добавляем теги к существующей памяти
+		Found->ContextTags.AppendTags(Tags);
+		
+		UE_LOG(LogTemp, Log, TEXT("NPCMemory: Added %d tags to memory '%s' (Total tags: %d)"), 
+			Tags.Num(), 
+			*MemoryId.ToString(),
+			Found->ContextTags.Num());
+		
+		return true;
+	}
+	
+	UE_LOG(LogTemp, Warning, TEXT("NPCMemory: Could not find memory '%s' to add tags"), 
+		*MemoryId.ToString());
+	
+	return false;
+}
+
 TArray<FNPCMemoryEntry> UNPCMemoryComponent::GetMemoriesByType(EMemoryType Type) const
 {
 	TArray<FNPCMemoryEntry> Result;

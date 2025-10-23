@@ -3,9 +3,12 @@
 #include "Core/DialogueRunner.h"
 #include "Core/DialogueContext.h"
 #include "Core/DialogueNode.h"
+#include "Core/DialogueStateMachine.h"
 #include "Data/DialogueDataAsset.h"
 #include "Conditions/DialogueConditionEvaluator.h"
 #include "Effects/DialogueEffectExecutor.h"
+#include "Commands/DialogueCommandHistory.h"
+#include "Commands/DialogueCommands.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
 
@@ -16,7 +19,11 @@ UDialogueRunner::UDialogueRunner()
     , LoadedDialogue(nullptr)
     , ConditionEvaluator(nullptr)
     , EffectExecutor(nullptr)
+    , StateMachine(nullptr)
+    , CommandInvoker(nullptr)
+    , bEnableCommandHistory(true)
 {
+    // Don't create objects here - will be created lazily when needed
 }
 
 void UDialogueRunner::StartDialogue(UDialogueDataAsset* InDialogue, const TArray<UObject*>& InParticipants)
@@ -26,12 +33,33 @@ void UDialogueRunner::StartDialogue(UDialogueDataAsset* InDialogue, const TArray
         UE_LOG(LogTemp, Warning, TEXT("DialogueRunner::StartDialogue - Invalid dialogue or no participants"));
         return;
     }
-    
+
+    // Create state machine if needed
+if (!StateMachine)
+    {
+      StateMachine = NewObject<UDialogueStateMachine>(this);
+    }
+
+    // Check if we can start dialogue
+    if (!CanPerformOperation("StartDialogue"))
+  {
+        UE_LOG(LogTemp, Warning, TEXT("DialogueRunner::StartDialogue - Cannot start in state: %s"),
+            *UEnum::GetValueAsString(StateMachine->GetCurrentState()));
+        return;
+    }
+ 
     // End previous dialogue if any
     if (bIsActive)
     {
-        EndDialogue();
+ EndDialogue();
     }
+
+    // Transition to Loading state
+    if (!StateMachine->TransitionTo(EDialogueState::Loading, TEXT("StartDialogue called")))
+    {
+  UE_LOG(LogTemp, Error, TEXT("DialogueRunner::StartDialogue - Failed to transition to Loading state"));
+        return;
+  }
     
     LoadedDialogue = InDialogue;
     
@@ -39,49 +67,68 @@ void UDialogueRunner::StartDialogue(UDialogueDataAsset* InDialogue, const TArray
     CurrentContext = NewObject<UDialogueSessionContext>(this);
     if (!CurrentContext)
     {
-        UE_LOG(LogTemp, Error, TEXT("DialogueRunner::StartDialogue - Failed to create context"));
+    UE_LOG(LogTemp, Error, TEXT("DialogueRunner::StartDialogue - Failed to create context"));
+        StateMachine->TransitionTo(EDialogueState::Error, TEXT("Failed to create context"));
         return;
     }
     
     // Initialize participants - use Player and NPC fields instead
     if (InParticipants.Num() > 0)
     {
-        CurrentContext->Player = Cast<AActor>(InParticipants[0]);
+        CurrentContext->SetPlayer(Cast<AActor>(InParticipants[0]));
     }
+    
     if (InParticipants.Num() > 1)
     {
-        CurrentContext->NPC = Cast<AActor>(InParticipants[1]);
+        CurrentContext->SetNPC(Cast<AActor>(InParticipants[1]));
     }
     
     // Create evaluators
     ConditionEvaluator = NewObject<UDialogueConditionEvaluator>(this);
     EffectExecutor = NewObject<UDialogueEffectExecutor>(this);
     
+    // Create command invoker if not already created
+    if (!CommandInvoker)
+    {
+        CommandInvoker = NewObject<UDialogueCommandInvoker>(this);
+     if (CommandInvoker)
+        {
+       CommandInvoker->SetRecordingEnabled(bEnableCommandHistory);
+        }
+    }
+    
     // Build node cache
-    BuildNodeCache();
+ BuildNodeCache();
     
     // Find start node
     FName StartNodeId = InDialogue->StartNode;
     if (StartNodeId.IsNone())
     {
         UE_LOG(LogTemp, Warning, TEXT("DialogueRunner::StartDialogue - No start node defined"));
+        StateMachine->TransitionTo(EDialogueState::Error, TEXT("No start node"));
         return;
     }
     
-    bIsActive = true;
+    bIsActive = true; // Keep for backward compatibility
     NodeHistory.Empty();
+
+    // Transition to Active state
+    StateMachine->TransitionTo(EDialogueState::Active, TEXT("Dialogue ready"));
     
     // Broadcast start event
-    OnDialogueStarted.Broadcast(InDialogue->DialogueId);
+ OnDialogueStarted.Broadcast(InDialogue->DialogueId);
     
     // Go to start node
-    GoToNode(StartNodeId);
+  GoToNode(StartNodeId);
 }
 
 void UDialogueRunner::EndDialogue()
 {
-    if (!bIsActive)
+    // Check if we can end dialogue
+    if (!CanPerformOperation("EndDialogue"))
     {
+  UE_LOG(LogTemp, Warning, TEXT("DialogueRunner::EndDialogue - Cannot end in state: %s"),
+        StateMachine ? *UEnum::GetValueAsString(StateMachine->GetCurrentState()) : TEXT("No StateMachine"));
         return;
     }
     
@@ -90,8 +137,14 @@ void UDialogueRunner::EndDialogue()
     {
         World->GetTimerManager().ClearTimer(AutoAdvanceTimerHandle);
     }
+
+    // Transition to Ended state
+    if (StateMachine)
+    {
+  StateMachine->TransitionTo(EDialogueState::Ended, TEXT("EndDialogue called"));
+    }
     
-    bIsActive = false;
+    bIsActive = false; // Keep for backward compatibility
     OnDialogueEnded.Broadcast();
     
     // Cleanup
@@ -100,17 +153,33 @@ void UDialogueRunner::EndDialogue()
     NodeCache.Empty();
     LoadedDialogue = nullptr;
     CurrentContext = nullptr;
+
+    // Transition back to Idle
+    if (StateMachine)
+    {
+   StateMachine->TransitionTo(EDialogueState::Idle, TEXT("Cleanup complete"));
+    }
 }
 
 void UDialogueRunner::PauseDialogue()
 {
-    if (!bIsActive)
+    // Check if we can pause
+    if (!CanPerformOperation("PauseDialogue"))
     {
+        UE_LOG(LogTemp, Warning, TEXT("DialogueRunner::PauseDialogue - Cannot pause in state: %s"),
+            StateMachine ? *UEnum::GetValueAsString(StateMachine->GetCurrentState()) : TEXT("No StateMachine"));
+    return;
+    }
+    
+    // Transition to Paused state
+    if (StateMachine && !StateMachine->TransitionTo(EDialogueState::Paused, TEXT("PauseDialogue called")))
+    {
+    UE_LOG(LogTemp, Warning, TEXT("DialogueRunner::PauseDialogue - Failed to transition to Paused state"));
         return;
     }
     
     // Clear auto-advance timer
-    if (UWorld* World = GetWorld())
+  if (UWorld* World = GetWorld())
     {
         World->GetTimerManager().PauseTimer(AutoAdvanceTimerHandle);
     }
@@ -118,21 +187,31 @@ void UDialogueRunner::PauseDialogue()
 
 void UDialogueRunner::ResumeDialogue()
 {
-    if (!bIsActive)
+    // Check if we can resume
+    if (!CanPerformOperation("ResumeDialogue"))
     {
+        UE_LOG(LogTemp, Warning, TEXT("DialogueRunner::ResumeDialogue - Cannot resume in state: %s"),
+   StateMachine ? *UEnum::GetValueAsString(StateMachine->GetCurrentState()) : TEXT("No StateMachine"));
+      return;
+    }
+    
+    // Transition back to Active state
+    if (StateMachine && !StateMachine->TransitionTo(EDialogueState::Active, TEXT("ResumeDialogue called")))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("DialogueRunner::ResumeDialogue - Failed to transition to Active state"));
         return;
     }
     
     // Resume auto-advance timer if it was paused
     if (UWorld* World = GetWorld())
     {
-        World->GetTimerManager().UnPauseTimer(AutoAdvanceTimerHandle);
+ World->GetTimerManager().UnPauseTimer(AutoAdvanceTimerHandle);
     }
     
     // Re-process current node if needed
     if (CurrentNode)
     {
-        // Check if we need to show choices again
+    // Check if we need to show choices again
         TArray<UDialogueNode*> Choices = GetAvailableChoices();
         if (Choices.Num() > 0)
         {
@@ -143,33 +222,55 @@ void UDialogueRunner::ResumeDialogue()
 
 bool UDialogueRunner::GoToNode(FName NodeId)
 {
-    if (!bIsActive || !LoadedDialogue || !CurrentContext)
-    {
+    // Check if we can navigate
+    if (!CanPerformOperation("GoToNode"))
+  {
+        UE_LOG(LogTemp, Warning, TEXT("DialogueRunner::GoToNode - Cannot navigate in state: %s"),
+   StateMachine ? *UEnum::GetValueAsString(StateMachine->GetCurrentState()) : TEXT("No StateMachine"));
         return false;
     }
+
+    if (!LoadedDialogue || !CurrentContext)
+    {
+  return false;
+  }
     
     TObjectPtr<UDialogueNode>* NodePtr = NodeCache.Find(NodeId);
     if (!NodePtr || !NodePtr->Get())
     {
         UE_LOG(LogTemp, Warning, TEXT("DialogueRunner: Node '%s' not found"), *NodeId.ToString());
-        return false;
+     return false;
     }
     
     UDialogueNode* NewNode = NodePtr->Get();
     
+    // Transition to Transitioning state
+    if (StateMachine)
+    {
+        StateMachine->TransitionTo(EDialogueState::Transitioning, FString::Printf(TEXT("Navigating to node: %s"), *NodeId.ToString()));
+  }
+    
     // Add to history
-    if (CurrentNode)
+  if (CurrentNode)
     {
         NodeHistory.Add(CurrentNode);
     }
     
     CurrentNode = NewNode;
-    
-    // Mark as visited
-    CurrentContext->VisitedNodes.Add(NodeId);
+ 
+ // Mark as visited
+    CurrentContext->MarkNodeVisited(NodeId);
     
     // Process node
     ProcessNode(NewNode);
+
+    // Transition back to Active (unless dialogue ended)
+ // FIXED: Don't transition back if we're no longer in Transitioning state
+    // (e.g., if ProcessNode called EndDialogue for End nodes)
+    if (StateMachine && StateMachine->GetCurrentState() == EDialogueState::Transitioning)
+    {
+  StateMachine->TransitionTo(EDialogueState::Active, TEXT("Node processed"));
+    }
     
     return true;
 }
@@ -178,7 +279,7 @@ bool UDialogueRunner::JumpToNode(UDialogueNode* TargetNode)
 {
     if (!TargetNode)
     {
-        return false;
+   return false;
     }
     
     return GoToNode(TargetNode->NodeId);
@@ -186,15 +287,23 @@ bool UDialogueRunner::JumpToNode(UDialogueNode* TargetNode)
 
 bool UDialogueRunner::SelectChoice(int32 ChoiceIndex)
 {
-    if (!bIsActive || !CurrentNode)
+    // Check if we can select choice
+    if (!CanPerformOperation("SelectChoice"))
+    {
+  UE_LOG(LogTemp, Warning, TEXT("DialogueRunner::SelectChoice - Cannot select choice in state: %s"),
+            StateMachine ? *UEnum::GetValueAsString(StateMachine->GetCurrentState()) : TEXT("No StateMachine"));
+   return false;
+    }
+
+    if (!CurrentNode)
     {
         return false;
     }
     
     TArray<UDialogueNode*> Choices = GetAvailableChoices();
-    if (!Choices.IsValidIndex(ChoiceIndex))
+if (!Choices.IsValidIndex(ChoiceIndex))
     {
-        return false;
+      return false;
     }
     
     UDialogueNode* SelectedChoice = Choices[ChoiceIndex];
@@ -208,7 +317,7 @@ bool UDialogueRunner::SelectChoice(int32 ChoiceIndex)
     // Navigate to next node
     UDialogueNode* NextNode = ComputeNextNode(SelectedChoice);
     if (NextNode)
-    {
+ {
         return GoToNode(NextNode->NodeId);
     }
     else
@@ -228,15 +337,23 @@ bool UDialogueRunner::GoBack()
     
     UDialogueNode* PreviousNode = NodeHistory.Pop();
     CurrentNode = PreviousNode;
-    
+  
     ProcessNode(PreviousNode);
-    
+
     return true;
 }
 
 void UDialogueRunner::Skip()
 {
-    if (!bIsActive || !CurrentNode)
+    // Check if we can skip
+    if (!CanPerformOperation("Skip"))
+    {
+   UE_LOG(LogTemp, Warning, TEXT("DialogueRunner::Skip - Cannot skip in state: %s"),
+     StateMachine ? *UEnum::GetValueAsString(StateMachine->GetCurrentState()) : TEXT("No StateMachine"));
+        return;
+    }
+
+    if (!CurrentNode)
     {
         return;
     }
@@ -261,16 +378,100 @@ void UDialogueRunner::Skip()
         TArray<UDialogueNode*> Choices = GetAvailableChoices();
         if (Choices.Num() > 0)
         {
-            // Show choices to player
+   // Show choices to player
             OnChoicesReady.Broadcast(Choices);
         }
         else
-        {
+    {
             // No choices and no next node - end dialogue
-            EndDialogue();
+       EndDialogue();
         }
     }
 }
+
+//==============================================================================
+// Command Helpers (v1.2)
+//==============================================================================
+
+UDialogueCommand* UDialogueRunner::CreateNavigateCommand(UDialogueNode* TargetNode)
+{
+    UDialogueCommand_NavigateToNode* Cmd = NewObject<UDialogueCommand_NavigateToNode>(this);
+    Cmd->SetTargetNode(TargetNode);
+ return Cmd;
+}
+
+UDialogueCommand* UDialogueRunner::CreateApplyEffectsCommand(const TArray<UDialogueEffect*>& Effects)
+{
+    UDialogueCommand_ApplyEffects* Cmd = NewObject<UDialogueCommand_ApplyEffects>(this);
+    Cmd->SetEffects(Effects);
+    return Cmd;
+}
+
+UDialogueCommand* UDialogueRunner::CreateSelectChoiceCommand(int32 ChoiceIndex)
+{
+    UDialogueCommand_SelectChoice* Cmd = NewObject<UDialogueCommand_SelectChoice>(this);
+    Cmd->SetChoiceIndex(ChoiceIndex);
+    return Cmd;
+}
+
+//==============================================================================
+// State Machine Integration (v1.3)
+//==============================================================================
+
+bool UDialogueRunner::IsActive() const
+{
+    // Deprecated - use GetCurrentState() instead
+    if (StateMachine)
+    {
+        const EDialogueState State = StateMachine->GetCurrentState();
+        return (State == EDialogueState::Active || 
+     State == EDialogueState::Transitioning ||
+         State == EDialogueState::Paused);
+    }
+
+    return bIsActive; // Fallback to old bool
+}
+
+EDialogueState UDialogueRunner::GetCurrentState() const
+{
+    if (StateMachine)
+    {
+        return StateMachine->GetCurrentState();
+    }
+
+    // Fallback if no state machine
+    return bIsActive ? EDialogueState::Active : EDialogueState::Idle;
+}
+
+bool UDialogueRunner::CanPerformOperation(FName OperationName) const
+{
+ if (!StateMachine)
+    {
+        // If no state machine, use old behavior
+     if (OperationName == "StartDialogue")
+  {
+      return !bIsActive;
+        }
+        return bIsActive;
+    }
+
+    return StateMachine->CanPerformOperation(OperationName);
+}
+
+void UDialogueRunner::OnStateMachineStateChanged(EDialogueState OldState, EDialogueState NewState)
+{
+    // Broadcast state change event
+    OnStateChanged.Broadcast(OldState, NewState);
+
+    // Log state change
+    UE_LOG(LogTemp, Log, TEXT("DialogueRunner: State changed %s -> %s"),
+     *UEnum::GetValueAsString(OldState),
+ *UEnum::GetValueAsString(NewState));
+}
+
+//==============================================================================
+// Internal Logic (restored from original)
+//==============================================================================
 
 TArray<UDialogueNode*> UDialogueRunner::GetAvailableChoices() const
 {
@@ -290,19 +491,19 @@ void UDialogueRunner::BuildNodeCache()
     {
         if (Node)
         {
-            NodeCache.Add(Node->NodeId, Node);
+         NodeCache.Add(Node->NodeId, Node);
         }
-    }
+ }
 }
 
 void UDialogueRunner::ProcessNode(UDialogueNode* Node)
 {
-    if (!Node || !CurrentContext)
+  if (!Node || !CurrentContext)
     {
-        return;
-    }
+  return;
+  }
     
-    // Apply node effects
+ // Apply node effects
     ApplyNodeEffects(Node);
     
     // Handle special node types
@@ -310,55 +511,66 @@ void UDialogueRunner::ProcessNode(UDialogueNode* Node)
     {
     case EDialogueNodeType::Random:
         {
-            UDialogueNode* RandomNext = ProcessRandomNode(Node);
-            if (RandomNext)
-            {
-                GoToNode(RandomNext->NodeId);
-                return;
-            }
-        }
+     UDialogueNode* RandomNext = ProcessRandomNode(Node);
+     if (RandomNext)
+  {
+       GoToNode(RandomNext->NodeId);
+     return;
+      }
+  }
         break;
         
     case EDialogueNodeType::Condition:
-        {
-            UDialogueNode* ConditionalNext = ProcessConditionNode(Node);
-            if (ConditionalNext)
+  {
+       UDialogueNode* ConditionalNext = ProcessConditionNode(Node);
+   if (ConditionalNext)
             {
-                GoToNode(ConditionalNext->NodeId);
-                return;
-            }
-        }
+           GoToNode(ConditionalNext->NodeId);
+       return;
+  }
+ }
         break;
-        
+   
     case EDialogueNodeType::End:
-        EndDialogue();
-        return;
+ // FIXED: Broadcast event first
+   OnNodeEntered.Broadcast(Node);
+      
+     // CRITICAL: Transition back to Active BEFORE ending dialogue
+        // This ensures EndDialogue() can properly check state and transition to Ended
+     if (StateMachine && StateMachine->GetCurrentState() == EDialogueState::Transitioning)
+        {
+            StateMachine->TransitionTo(EDialogueState::Active, TEXT("End node - preparing to end dialogue"));
+        }
         
+        // Now end dialogue (will transition Active -> Ended -> Idle)
+    EndDialogue();
+  return;
+  
     default:
-        break;
+     break;
     }
     
     // Broadcast node entered event
     OnNodeEntered.Broadcast(Node);
     
     // Check for choices
-    TArray<UDialogueNode*> Choices = GetAvailableChoices();
+ TArray<UDialogueNode*> Choices = GetAvailableChoices();
     if (Choices.Num() > 0)
     {
-        OnChoicesReady.Broadcast(Choices);
+     OnChoicesReady.Broadcast(Choices);
     }
     else
-    {
-        // Setup auto-advance if no choices
-        SetupAutoAdvance(Node);
-    }
+ {
+ // Setup auto-advance if no choices
+SetupAutoAdvance(Node);
+  }
 }
 
 void UDialogueRunner::ApplyNodeEffects(UDialogueNode* Node)
 {
-    if (!Node || !EffectExecutor || !CurrentContext)
+if (!Node || !EffectExecutor || !CurrentContext)
     {
-        return;
+   return;
     }
     
     // Execute node effects if any
@@ -378,12 +590,12 @@ UDialogueNode* UDialogueRunner::ComputeNextNode(UDialogueNode* FromNode)
     // Get connections from this node
     for (const FDialogueConnection& Connection : FromNode->Connections)
     {
-        if (IsConnectionAvailable(Connection))
+      if (IsConnectionAvailable(Connection))
         {
-            if (TObjectPtr<UDialogueNode>* TargetNode = NodeCache.Find(Connection.TargetNodeId))
-            {
-                return TargetNode->Get();
-            }
+  if (TObjectPtr<UDialogueNode>* TargetNode = NodeCache.Find(Connection.TargetNodeId))
+     {
+     return TargetNode->Get();
+       }
         }
     }
     
@@ -402,15 +614,15 @@ TArray<UDialogueNode*> UDialogueRunner::GatherChoices(UDialogueNode* FromNode) c
     // Get connections from this node
     for (const FDialogueConnection& Connection : FromNode->Connections)
     {
-        if (IsConnectionAvailable(Connection))
+   if (IsConnectionAvailable(Connection))
         {
             if (const TObjectPtr<UDialogueNode>* TargetNode = NodeCache.Find(Connection.TargetNodeId))
             {
                 // Only include player choice nodes
-                if (TargetNode->Get() && TargetNode->Get()->NodeType == EDialogueNodeType::PlayerChoice)
-                {
-                    Result.Add(TargetNode->Get());
-                }
+   if (TargetNode->Get() && TargetNode->Get()->NodeType == EDialogueNodeType::PlayerChoice)
+            {
+               Result.Add(TargetNode->Get());
+   }
             }
         }
     }
@@ -422,17 +634,17 @@ UDialogueNode* UDialogueRunner::ProcessRandomNode(UDialogueNode* RandomNode)
 {
     if (!RandomNode || !LoadedDialogue)
     {
-        return nullptr;
+   return nullptr;
     }
     
     // Filter available connections
     TArray<FDialogueConnection> AvailableConnections;
     for (const FDialogueConnection& Connection : RandomNode->Connections)
     {
-        if (IsConnectionAvailable(Connection))
+  if (IsConnectionAvailable(Connection))
         {
-            AvailableConnections.Add(Connection);
-        }
+   AvailableConnections.Add(Connection);
+     }
     }
     
     if (AvailableConnections.Num() == 0)
@@ -461,11 +673,11 @@ UDialogueNode* UDialogueRunner::ProcessConditionNode(UDialogueNode* ConditionNod
     for (const FDialogueConnection& Connection : ConditionNode->Connections)
     {
         if (IsConnectionAvailable(Connection))
-        {
+   {
             if (TObjectPtr<UDialogueNode>* TargetNode = NodeCache.Find(Connection.TargetNodeId))
             {
-                return TargetNode->Get();
-            }
+       return TargetNode->Get();
+  }
         }
     }
     
@@ -483,23 +695,23 @@ bool UDialogueRunner::IsConnectionAvailable(const FDialogueConnection& Connectio
     if (!Connection.Condition)
     {
         return true;
-    }
+  }
     
     return ConditionEvaluator->EvaluateCondition(Connection.Condition, CurrentContext);
 }
 
 void UDialogueRunner::SetupAutoAdvance(UDialogueNode* Node)
 {
-    if (!Node)
+  if (!Node)
     {
-        return;
+     return;
     }
     
     UWorld* World = GetWorld();
     if (!World)
-    {
+{
         return;
-    }
+ }
     
     // Clear existing timer
     World->GetTimerManager().ClearTimer(AutoAdvanceTimerHandle);
@@ -508,11 +720,11 @@ void UDialogueRunner::SetupAutoAdvance(UDialogueNode* Node)
     if (Node->bAutoAdvance && Node->AutoAdvanceDelay > 0.0f)
     {
         World->GetTimerManager().SetTimer(
-            AutoAdvanceTimerHandle,
-            this,
-            &UDialogueRunner::OnAutoAdvanceTimer,
+     AutoAdvanceTimerHandle,
+   this,
+        &UDialogueRunner::OnAutoAdvanceTimer,
             Node->AutoAdvanceDelay,
-            false
+  false
         );
     }
 }
@@ -521,4 +733,125 @@ void UDialogueRunner::OnAutoAdvanceTimer()
 {
     // Auto-advance to next node or show choices
     Skip();
+}
+
+//==============================================================================
+// Command Pattern Implementation (v1.2)
+//==============================================================================
+
+bool UDialogueRunner::ExecuteCommand(UDialogueCommand* Command, bool bRecordInHistory)
+{
+    // Lazy initialize CommandInvoker
+    if (!CommandInvoker)
+    {
+        CommandInvoker = NewObject<UDialogueCommandInvoker>(this);
+        if (!CommandInvoker)
+        {
+ UE_LOG(LogTemp, Error, TEXT("DialogueRunner::ExecuteCommand - Failed to create CommandInvoker"));
+            return false;
+        }
+        CommandInvoker->SetRecordingEnabled(bEnableCommandHistory);
+    }
+
+    if (!CurrentContext)
+    {
+   UE_LOG(LogTemp, Error, TEXT("DialogueRunner::ExecuteCommand - No active context"));
+        return false;
+    }
+
+    return CommandInvoker->ExecuteCommand(Command, CurrentContext, bRecordInHistory);
+}
+
+bool UDialogueRunner::UndoLastCommand()
+{
+    // Lazy initialize CommandInvoker
+    if (!CommandInvoker)
+    {
+        CommandInvoker = NewObject<UDialogueCommandInvoker>(this);
+if (!CommandInvoker)
+        {
+       UE_LOG(LogTemp, Error, TEXT("DialogueRunner::UndoLastCommand - Failed to create CommandInvoker"));
+       return false;
+        }
+        CommandInvoker->SetRecordingEnabled(bEnableCommandHistory);
+    }
+
+    if (!CurrentContext)
+    {
+    UE_LOG(LogTemp, Error, TEXT("DialogueRunner::UndoLastCommand - No active context"));
+        return false;
+  }
+
+    return CommandInvoker->UndoLastCommand(CurrentContext);
+}
+
+bool UDialogueRunner::RedoCommand()
+{
+    // Lazy initialize CommandInvoker
+    if (!CommandInvoker)
+    {
+     CommandInvoker = NewObject<UDialogueCommandInvoker>(this);
+        if (!CommandInvoker)
+ {
+    UE_LOG(LogTemp, Error, TEXT("DialogueRunner::RedoCommand - Failed to create CommandInvoker"));
+    return false;
+        }
+        CommandInvoker->SetRecordingEnabled(bEnableCommandHistory);
+ }
+
+    if (!CurrentContext)
+    {
+        UE_LOG(LogTemp, Error, TEXT("DialogueRunner::RedoCommand - No active context"));
+        return false;
+    }
+
+    return CommandInvoker->RedoCommand(CurrentContext);
+}
+
+bool UDialogueRunner::CanUndo() const
+{
+if (!CommandInvoker)
+    {
+        return false;
+    }
+
+    return CommandInvoker->CanUndo();
+}
+
+bool UDialogueRunner::CanRedo() const
+{
+    if (!CommandInvoker)
+{
+        return false;
+    }
+
+    return CommandInvoker->CanRedo();
+}
+
+FString UDialogueRunner::GetCommandHistoryAsString() const
+{
+    if (!CommandInvoker)
+    {
+        return TEXT("No command history available (invoker not initialized yet)");
+    }
+
+    return CommandInvoker->ExportHistoryToString();
+}
+
+void UDialogueRunner::ClearCommandHistory()
+{
+    if (CommandInvoker)
+  {
+        CommandInvoker->ClearHistory();
+    }
+}
+
+void UDialogueRunner::SetCommandRecordingEnabled(bool bEnabled)
+{
+  bEnableCommandHistory = bEnabled;
+
+    if (CommandInvoker)
+    {
+        CommandInvoker->SetRecordingEnabled(bEnabled);
+    }
 }

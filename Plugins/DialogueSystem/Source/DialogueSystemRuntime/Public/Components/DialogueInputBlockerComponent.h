@@ -15,6 +15,17 @@ class APlayerController;
 class APawn;
 
 /**
+ * Input mode types (simplified)
+ */
+UENUM()
+enum class EInputMode : uint8
+{
+	GameOnly,
+	UIOnly,
+	GameAndUI
+};
+
+/**
  * Input blocking strategy
  */
 UENUM(BlueprintType)
@@ -98,6 +109,18 @@ struct DIALOGUESYSTEMRUNTIME_API FDialogueInputBlockingSettings
 	/** Restore hidden pawn state after dialogue */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input")
 	bool bRestorePawnState = true;
+
+	/** Show mouse cursor during dialogue */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
+	bool bShowMouseCursor = true;
+
+	/** Enable click events during dialogue (for UI interaction) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
+	bool bEnableClickEvents = true;
+
+	/** Enable mouse over events during dialogue */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
+	bool bEnableMouseOverEvents = true;
 };
 
 /**
@@ -161,7 +184,7 @@ protected:
 
 	/** Cached player pawn */
 	UPROPERTY(Transient)
-	TWeakObjectPtr<APawn> CachedPlayerPawn;
+TWeakObjectPtr<APawn> CachedPlayerPawn;
 
 	/** Is input currently blocked? */
 	UPROPERTY(Transient)
@@ -181,7 +204,26 @@ protected:
 	TArray<TObjectPtr<UInputMappingContext>> StoredMappingContexts;
 
 	/** Stored mapping context priorities */
+	UPROPERTY(Transient)
 	TArray<int32> StoredMappingPriorities;
+
+	/** Original pawn pitch rotation enabled state */
+	bool bOriginalPitchRotationEnabled = false;
+
+	/** Original pawn roll rotation enabled state */
+	bool bOriginalRollRotationEnabled = false;
+
+	/** Original mouse cursor visibility */
+	bool bOriginalShowMouseCursor = false;
+
+	/** Original click events enabled state */
+	bool bOriginalEnableClickEvents = false;
+
+	/** Original mouse over events enabled state */
+	bool bOriginalEnableMouseOverEvents = false;
+
+	/** Original input mode (to restore after dialogue) */
+	EInputMode OriginalInputMode = EInputMode::GameOnly;
 
 	//~ End Runtime State
 

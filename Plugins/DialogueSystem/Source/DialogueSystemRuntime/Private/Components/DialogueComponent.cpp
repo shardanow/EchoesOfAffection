@@ -89,17 +89,17 @@ void UDialogueComponent::OnDialogueStarted_Implementation(UDialogueRunner* Runne
     OnDialogueStarted.Broadcast(Runner);
     
     // Create memory of dialogue start if memory component exists
-    if (MemoryComp && LastContext && LastContext->Player)
+    if (MemoryComp && LastContext && LastContext->GetPlayer())
     {
         FFormatNamedArguments Args;
-        Args.Add(TEXT("ActorName"), FText::FromString(LastContext->Player->GetName()));
+        Args.Add(TEXT("ActorName"), FText::FromString(LastContext->GetPlayer()->GetName()));
         
         MemoryComp->CreateMemory(
             EMemoryType::DialogueEvent,
             FText::Format(NSLOCTEXT("Dialogue", "StartedConversation", "Started conversation with {ActorName}"), Args),
             40.0f,
             EMemoryEmotion::Neutral,
-            LastContext->Player
+            LastContext->GetPlayer()
         );
     }
 }
@@ -115,8 +115,9 @@ void UDialogueComponent::OnDialogueEnded_Implementation()
 
 bool UDialogueComponent::StartDialogue(AActor* Initiator)
 {
-    if (!CanStartDialogue(Initiator))
+    if (!IDialogueParticipant::Execute_CanStartDialogue(this, Initiator))
     {
+		UE_LOG(LogDialogueComponent, Warning, TEXT("StartDialogue - Cannot start dialogue now"));
         return false;
     }
 
@@ -137,8 +138,9 @@ bool UDialogueComponent::StartDialogue(AActor* Initiator)
 
     // Create context
     UDialogueSessionContext* Context = NewObject<UDialogueSessionContext>();
-    Context->Player = Initiator;
-    Context->NPC = GetOwner();
+    Context->Initialize(); // v1.3.1: Initialize components
+    Context->SetPlayer(Initiator);
+    Context->SetNPC(GetOwner());
 
     // Select dialogue
     UDialogueDataAsset* SelectedDialogue = SelectDialogue(Context);
@@ -159,11 +161,14 @@ bool UDialogueComponent::StartDialogue(AActor* Initiator)
     if (Runner)
     {
         ActiveRunner = Runner;
-        LastContext = Context;
+      LastContext = Context;
         
         // Bind to end event
-        Runner->OnDialogueEnded.AddDynamic(this, &UDialogueComponent::HandleDialogueEnded);
-        
+      Runner->OnDialogueEnded.AddDynamic(this, &UDialogueComponent::HandleDialogueEnded);
+  
+    // Bind to node changed event
+    Runner->OnNodeEntered.AddDynamic(this, &UDialogueComponent::HandleNodeEntered);
+     
         // Call interface method (через IDialogueParticipant)
         IDialogueParticipant::Execute_OnDialogueStarted(this, Runner);
         
@@ -219,31 +224,42 @@ UDialogueDataAsset* UDialogueComponent::SelectDialogue(const UDialogueSessionCon
 void UDialogueComponent::HandleDialogueEnded()
 {
     if (ActiveRunner)
-    {
+  {
         ActiveRunner->OnDialogueEnded.RemoveDynamic(this, &UDialogueComponent::HandleDialogueEnded);
+   ActiveRunner->OnNodeEntered.RemoveDynamic(this, &UDialogueComponent::HandleNodeEntered);
         
         // Create memory of dialogue end if memory component exists
-        if (MemoryComp && LastContext && LastContext->Player)
+        if (MemoryComp && LastContext && LastContext->GetPlayer())
         {
-            // Calculate importance based on duration
-            FTimespan Duration = FDateTime::Now() - LastContext->SessionStartTime;
-            float Importance = FMath::Clamp(30.0f + Duration.GetTotalMinutes() * 5.0f, 30.0f, 80.0f);
-            
+      // Calculate importance based on duration
+            FTimespan Duration = FDateTime::Now() - LastContext->GetState()->GetSessionStartTime();
+     float Importance = FMath::Clamp(30.0f + Duration.GetTotalMinutes() * 5.0f, 30.0f, 80.0f);
+  
             FFormatNamedArguments Args;
-            Args.Add(TEXT("ActorName"), FText::FromString(LastContext->Player->GetName()));
-            
-            MemoryComp->CreateMemory(
-                EMemoryType::DialogueEvent,
-                FText::Format(NSLOCTEXT("Dialogue", "HadConversation", "Had a conversation with {ActorName}"), Args),
-                Importance,
-                EMemoryEmotion::Neutral,
-                LastContext->Player
+      Args.Add(TEXT("ActorName"), FText::FromString(LastContext->GetPlayer()->GetName()));
+         
+          MemoryComp->CreateMemory(
+     EMemoryType::DialogueEvent,
+       FText::Format(NSLOCTEXT("Dialogue", "HadConversation", "Had a conversation with {ActorName}"), Args),
+   Importance,
+              EMemoryEmotion::Neutral,
+         LastContext->GetPlayer()
             );
-        }
+    }
         
         ActiveRunner = nullptr;
+   PreviousNode = nullptr;
     }
 
     // Call interface method
     IDialogueParticipant::Execute_OnDialogueEnded(this);
+}
+
+void UDialogueComponent::HandleNodeEntered(UDialogueNode* NewNode)
+{
+ // Broadcast node change event
+ OnDialogueNodeChanged.Broadcast(NewNode, PreviousNode);
+ 
+ // Update previous node
+ PreviousNode = NewNode;
 }

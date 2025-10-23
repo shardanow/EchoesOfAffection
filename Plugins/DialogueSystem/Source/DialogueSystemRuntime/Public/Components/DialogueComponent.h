@@ -14,10 +14,12 @@ class UDialogueSessionContext;
 class URelationshipComponent;
 class UNPCMemoryComponent;
 class IDialogueService;
+class UDialogueNode;
 
 // Delegates
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDialogueStartedSignature, UDialogueRunner*, Runner);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDialogueEndedSignature);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnDialogueNodeChangedSignature, UDialogueNode*, NewNode, UDialogueNode*, PreviousNode);
 
 /**
  * Компонент диалога для NPC
@@ -46,6 +48,10 @@ public:
     /** Called when dialogue ends */
     UPROPERTY(BlueprintAssignable, Category = "Dialogue|Events")
     FOnDialogueEndedSignature OnDialogueEnded;
+
+    /** Called when dialogue node changes (new line/response) */
+    UPROPERTY(BlueprintAssignable, Category = "Dialogue|Events")
+    FOnDialogueNodeChangedSignature OnDialogueNodeChanged;
 
     //~ End Delegates
 
@@ -87,6 +93,10 @@ protected:
     /** Текущий Runner (если диалог активен) */
     UPROPERTY(Transient)
     TObjectPtr<UDialogueRunner> ActiveRunner;
+
+    /** Предыдущая нода (для отслеживания изменений) */
+    UPROPERTY(Transient)
+    TObjectPtr<UDialogueNode> PreviousNode;
 
     /** Relationship Component (cached) */
     UPROPERTY(Transient)
@@ -164,4 +174,8 @@ protected:
     /** Callback: диалог завершён */
     UFUNCTION()
     void HandleDialogueEnded();
+
+    /** Callback: переход на новую ноду */
+    UFUNCTION()
+    void HandleNodeEntered(UDialogueNode* NewNode);
 };

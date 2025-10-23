@@ -169,11 +169,11 @@ protected:
 
 	/** Dynamically track speaker during dialogue */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
-	bool bTrackSpeaker = true;
+	bool bTrackSpeaker = false;  // Отключено по умолчанию - предотвращает дергание камеры
 
 	/** Update frequency for speaker tracking (seconds) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera", meta = (ClampMin = "0.1", ClampMax = "2"))
-	float TrackingUpdateRate = 0.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera", meta = (ClampMin = "0.01", ClampMax = "2"))
+	float TrackingUpdateRate = 0.1f;
 
 	//~ End Configuration
 
@@ -211,11 +211,38 @@ protected:
 	UPROPERTY(Transient)
 	bool bCameraActive = false;
 
+	/** Is camera currently blending? */
+	bool bIsBlending = false;
+
+	/** Blend start time */
+	float BlendStartTime = 0.0f;
+
+	/** Blend duration */
+	float BlendDuration = 0.0f;
+
+	/** Transform at blend start */
+	FTransform BlendStartTransform;
+
+	/** Target transform for blend */
+	FTransform BlendTargetTransform;
+
+	/** Current blend function */
+	EViewTargetBlendFunction CurrentBlendFunction = VTBlend_Linear;
+
+	/** Start FOV for blending */
+	float StartFOV = 90.0f;
+
+	/** Target FOV for blending */
+	float TargetFOV = 90.0f;
+
 	/** Timer handle for speaker tracking */
 	FTimerHandle TrackingTimerHandle;
 
 	/** Original camera FOV */
 	float OriginalFOV = 90.0f;
+
+	/** Original player camera location (for stable tracking) */
+	FVector OriginalPlayerLocation = FVector::ZeroVector;
 
 	//~ End Runtime State
 
@@ -245,6 +272,14 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Dialogue|Camera")
 	bool ActivateDialogueCameraWithFraming(AActor* TargetActor, EDialogueCameraFraming Framing);
+
+	/**
+	 * Simple activation with default Medium shot settings
+	 * @param TargetActor - The NPC to focus on
+	 * @return True if camera was activated successfully
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Dialogue|Camera", meta = (DisplayName = "Activate Dialogue Camera (Simple)"))
+	bool ActivateDialogueCameraSimple(AActor* TargetActor);
 
 	/**
 	 * Deactivate dialogue camera and restore original view
@@ -307,6 +342,9 @@ protected:
 	/** Calculate camera position for target actor */
 	FTransform CalculateCameraTransform(AActor* TargetActor, const FDialogueCameraSettings& Settings) const;
 
+	/** Calculate camera position using specific player location (for stable framing) */
+	FTransform CalculateCameraTransformWithPlayerLocation(AActor* TargetActor, const FDialogueCameraSettings& Settings, const FVector& PlayerLocation) const;
+
 	/** Get focus point on target actor */
 	FVector GetFocusPoint(AActor* TargetActor) const;
 
@@ -315,6 +353,9 @@ protected:
 
 	/** Convert blend mode to engine blend function */
 	static EViewTargetBlendFunction ConvertBlendMode(EDialogueCameraBlendMode BlendMode);
+
+	/** Apply blend function to alpha value (0-1) */
+	float ApplyBlendFunction(float Alpha, EViewTargetBlendFunction BlendFunc) const;
 
 	/** Find player camera manager */
 	APlayerCameraManager* FindPlayerCameraManager() const;

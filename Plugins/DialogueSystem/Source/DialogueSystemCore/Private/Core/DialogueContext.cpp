@@ -2,260 +2,128 @@
 
 #include "Core/DialogueContext.h"
 #include "Core/DialogueNode.h"
+#include "Core/DialogueState.h"
+#include "Core/DialogueParticipants.h"
+#include "Core/DialogueVariableStore.h"
 #include "SaveGame/DialogueSaveData.h"
-#include "Dom/JsonObject.h"
-#include "Serialization/JsonSerializer.h"
-#include "Serialization/JsonWriter.h"
 #include "GameFramework/Actor.h"
 
-void UDialogueSessionContext::BeginDestroy()
+// v1.3.1: Include serializers instead of doing serialization inline
+#include "Serialization/DialogueSnapshotSerializer.h"
+#include "Serialization/DialogueSaveDataSerializer.h"
+#include "Serialization/DialogueJsonSerializer.h"
+
+//==============================================================================
+// v1.3.1: Component Initialization
+//==============================================================================
+
+void UDialogueSessionContext::Initialize()
 {
-    Super::BeginDestroy();
+    if (!State) { State = NewObject<UDialogueState>(this, TEXT("State")); }
+    if (!Participants) { Participants = NewObject<UDialogueParticipants>(this, TEXT("Participants")); }
+    if (!Variables) { Variables = NewObject<UDialogueVariableStore>(this, TEXT("Variables")); }
 }
 
-FString UDialogueSessionContext::GetCustomVariable(FName VariableName, const FString& DefaultValue) const
+void UDialogueSessionContext::BeginDestroy() { Super::BeginDestroy(); }
+
+//==============================================================================
+// v1.3.1: Facade Delegates - State Component
+//==============================================================================
+
+UDialogueNode* UDialogueSessionContext::GetCurrentNode() const { return State ? State->GetCurrentNode() : CurrentNode.Get(); }
+void UDialogueSessionContext::SetCurrentNode(UDialogueNode* Node) { if (State) { State->SetCurrentNode(Node); } CurrentNode = Node; }
+void UDialogueSessionContext::MarkNodeVisited(FName NodeId) { if (State) { State->MarkNodeVisited(NodeId); } VisitedNodes.AddUnique(NodeId); }
+bool UDialogueSessionContext::WasNodeVisited(FName NodeId) const { return State ? State->WasNodeVisited(NodeId) : VisitedNodes.Contains(NodeId); }
+void UDialogueSessionContext::AddToHistory(const FText& SpeakerName, const FText& DialogueText, FName NodeId) { if (State) { State->AddToHistory(SpeakerName, DialogueText, NodeId); } }
+
+//==============================================================================
+// v1.3.1: Facade Delegates - Participants Component
+//==============================================================================
+
+AActor* UDialogueSessionContext::GetPlayer() const { return Participants ? Participants->GetPlayer() : Player.Get(); }
+AActor* UDialogueSessionContext::GetNPC() const { return Participants ? Participants->GetNPC() : NPC.Get(); }
+void UDialogueSessionContext::SetPlayer(AActor* InPlayer) { if (Participants) { Participants->SetPlayer(InPlayer); } Player = InPlayer; }
+void UDialogueSessionContext::SetNPC(AActor* InNPC) { if (Participants) { Participants->SetNPC(InNPC); } NPC = InNPC; }
+
+//==============================================================================
+// v1.3.1: Facade Delegates - Variable Store Component
+//==============================================================================
+
+FString UDialogueSessionContext::GetCustomVariable(FName VariableName, const FString& DefaultValue) const { return Variables ? Variables->GetCustomVariable(VariableName, DefaultValue) : CustomVariables.FindRef(VariableName); }
+void UDialogueSessionContext::SetCustomVariable(FName VariableName, const FString& Value) { if (Variables) { Variables->SetCustomVariable(VariableName, Value); } CustomVariables.Add(VariableName, Value); }
+void UDialogueSessionContext::AddTag(FGameplayTag Tag) { if (Variables) { Variables->AddTag(Tag); } ActiveTags.AddTag(Tag); }
+void UDialogueSessionContext::RemoveTag(FGameplayTag Tag) { if (Variables) { Variables->RemoveTag(Tag); } ActiveTags.RemoveTag(Tag); }
+bool UDialogueSessionContext::HasTag(FGameplayTag Tag) const { return Variables ? Variables->HasTag(Tag) : ActiveTags.HasTag(Tag); }
+
+//==============================================================================
+// v1.3.1: Type-Safe Variable API (Delegates to VariableStore)
+//==============================================================================
+
+void UDialogueSessionContext::SetVariantBool(FName VariableName, bool Value) { if (Variables) { Variables->SetVariantBool(VariableName, Value); } }
+void UDialogueSessionContext::SetVariantInt(FName VariableName, int32 Value) { if (Variables) { Variables->SetVariantInt(VariableName, Value); } }
+void UDialogueSessionContext::SetVariantFloat(FName VariableName, float Value) { if (Variables) { Variables->SetVariantFloat(VariableName, Value); } }
+void UDialogueSessionContext::SetVariantString(FName VariableName, const FString& Value) { if (Variables) { Variables->SetVariantString(VariableName, Value); } }
+void UDialogueSessionContext::SetVariantName(FName VariableName, FName Value) { if (Variables) { Variables->SetVariantName(VariableName, Value); } }
+void UDialogueSessionContext::SetVariantObject(FName VariableName, UObject* Value) { if (Variables) { Variables->SetVariantObject(VariableName, Value); } }
+void UDialogueSessionContext::SetVariantTag(FName VariableName, FGameplayTag Value) { if (Variables) { Variables->SetVariantTag(VariableName, Value); } }
+
+bool UDialogueSessionContext::GetVariantBool(FName VariableName, bool DefaultValue) const { return Variables ? Variables->GetVariantBool(VariableName, DefaultValue) : DefaultValue; }
+int32 UDialogueSessionContext::GetVariantInt(FName VariableName, int32 DefaultValue) const { return Variables ? Variables->GetVariantInt(VariableName, DefaultValue) : DefaultValue; }
+float UDialogueSessionContext::GetVariantFloat(FName VariableName, float DefaultValue) const { return Variables ? Variables->GetVariantFloat(VariableName, DefaultValue) : DefaultValue; }
+FString UDialogueSessionContext::GetVariantString(FName VariableName, const FString& DefaultValue) const { return Variables ? Variables->GetVariantString(VariableName, DefaultValue) : DefaultValue; }
+FName UDialogueSessionContext::GetVariantName(FName VariableName, FName DefaultValue) const { return Variables ? Variables->GetVariantName(VariableName, DefaultValue) : DefaultValue; }
+UObject* UDialogueSessionContext::GetVariantObject(FName VariableName, UObject* DefaultValue) const { return Variables ? Variables->GetVariantObject(VariableName, DefaultValue) : DefaultValue; }
+FGameplayTag UDialogueSessionContext::GetVariantTag(FName VariableName, const FGameplayTag& DefaultValue) const { return Variables ? Variables->GetVariantTag(VariableName, DefaultValue) : DefaultValue; }
+
+//==============================================================================
+// v1.3.1: Snapshot API - Delegated to FDialogueSnapshotSerializer
+//==============================================================================
+
+FDialogueStateSnapshot UDialogueSessionContext::CreateSnapshot(uint8 DialogueState, const TArray<UDialogueNode*>& NodeHistory) const
 {
-    if (const FString* Value = CustomVariables.Find(VariableName))
-    {
-        return *Value;
-    }
-    return DefaultValue;
+    return FDialogueSnapshotSerializer::Get().CreateSnapshot(this, DialogueState, NodeHistory);
 }
 
-void UDialogueSessionContext::SetCustomVariable(FName VariableName, const FString& Value)
+bool UDialogueSessionContext::RestoreFromSnapshot(const FDialogueStateSnapshot& Snapshot)
 {
-    CustomVariables.Add(VariableName, Value);
+    return FDialogueSnapshotSerializer::Get().RestoreFromSnapshot(this, Snapshot);
 }
 
-void UDialogueSessionContext::AddTag(FGameplayTag Tag)
+//==============================================================================
+// v1.3.1: Reset State
+//==============================================================================
+
+void UDialogueSessionContext::ResetState()
 {
-    ActiveTags.AddTag(Tag);
+    if (State) { State->Reset(); }
+    if (Participants) { Participants->Reset(); }
+    if (Variables) { Variables->Reset(); }
 }
 
-void UDialogueSessionContext::RemoveTag(FGameplayTag Tag)
-{
-    ActiveTags.RemoveTag(Tag);
-}
-
-bool UDialogueSessionContext::HasTag(FGameplayTag Tag) const
-{
-    return ActiveTags.HasTag(Tag);
-}
-
-void UDialogueSessionContext::AddToHistory(const FText& SpeakerName, const FText& DialogueText, FName NodeId)
-{
-    FConversationEntry Entry;
-    Entry.SpeakerName = SpeakerName;
-    Entry.DialogueText = DialogueText;
-    Entry.NodeId = NodeId;
-    Entry.Timestamp = FDateTime::Now();
-    
-    ConversationHistory.Add(Entry);
-}
-
-void UDialogueSessionContext::MarkNodeVisited(FName NodeId)
-{
-    VisitedNodes.AddUnique(NodeId);
-}
-
-bool UDialogueSessionContext::WasNodeVisited(FName NodeId) const
-{
-    return VisitedNodes.Contains(NodeId);
-}
+//==============================================================================
+// v1.3.1: SaveGame API - Delegated to FDialogueSaveDataSerializer
+//==============================================================================
 
 FDialogueSessionSaveData UDialogueSessionContext::ToSaveData(FName DialogueId) const
 {
-    FDialogueSessionSaveData SaveData;
-    
-    SaveData.DialogueId = DialogueId;
-    SaveData.CurrentNodeId = CurrentNode.IsValid() ? CurrentNode->NodeId : NAME_None;
-    SaveData.VisitedNodes = VisitedNodes;
-    SaveData.CustomVariables = CustomVariables;
-    SaveData.ActiveTags = ActiveTags;
-    SaveData.BaseAffinityLevel = BaseAffinityLevel;
-    SaveData.SessionStartTime = SessionStartTime;
-    
-    // Конвертация истории разговора
-    for (const FConversationEntry& Entry : ConversationHistory)
-    {
-        FDialogueHistoryEntry HistoryEntry;
-        HistoryEntry.SpeakerName = Entry.SpeakerName;
-        HistoryEntry.DialogueText = Entry.DialogueText;
-        HistoryEntry.NodeId = Entry.NodeId;
-        HistoryEntry.Timestamp = Entry.Timestamp;
-        SaveData.ConversationHistory.Add(HistoryEntry);
-    }
-    
-    // Сохранить пути к акторам
-    if (Player)
-    {
-        SaveData.PlayerPath = FSoftObjectPath(Player);
-    }
-    if (NPC)
-    {
-        SaveData.NPCPath = FSoftObjectPath(NPC);
-    }
-    
-    return SaveData;
+    return FDialogueSaveDataSerializer::Get().ToSaveData(this, DialogueId);
 }
 
 bool UDialogueSessionContext::FromSaveData(const FDialogueSessionSaveData& SaveData, AActor* InPlayer, AActor* InNPC)
 {
-    if (!SaveData.IsValid())
-    {
-        return false;
-    }
-    
-    // Восстановить базовые данные
-    Player = InPlayer;
-    NPC = InNPC;
-    VisitedNodes = SaveData.VisitedNodes;
-    CustomVariables = SaveData.CustomVariables;
-    ActiveTags = SaveData.ActiveTags;
-    BaseAffinityLevel = SaveData.BaseAffinityLevel;
-    SessionStartTime = SaveData.SessionStartTime;
-    
-    // Восстановить историю разговора
-    ConversationHistory.Empty();
-    for (const FDialogueHistoryEntry& HistoryEntry : SaveData.ConversationHistory)
-    {
-        FConversationEntry Entry;
-        Entry.SpeakerName = HistoryEntry.SpeakerName;
-        Entry.DialogueText = HistoryEntry.DialogueText;
-        Entry.NodeId = HistoryEntry.NodeId;
-        Entry.Timestamp = HistoryEntry.Timestamp;
-        ConversationHistory.Add(Entry);
-    }
-    
-    // Примечание: CurrentNode будет установлен DialogueRunner'ом после загрузки
-    
-    return true;
+    return FDialogueSaveDataSerializer::Get().FromSaveData(this, SaveData, InPlayer, InNPC);
 }
+
+//==============================================================================
+// v1.3.1: JSON API - Delegated to FDialogueJsonSerializer
+//==============================================================================
 
 void UDialogueSessionContext::SaveToJson(FString& OutJson) const
 {
-    TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject());
-    
-    // Save custom variables
-    TSharedPtr<FJsonObject> VarsObj = MakeShareable(new FJsonObject());
-    for (const auto& Pair : CustomVariables)
-    {
-        VarsObj->SetStringField(Pair.Key.ToString(), Pair.Value);
-    }
-    JsonObject->SetObjectField(TEXT("CustomVariables"), VarsObj);
-    
-    // Save visited nodes
-    TArray<TSharedPtr<FJsonValue>> VisitedArray;
-    for (const FName& NodeId : VisitedNodes)
-    {
-        VisitedArray.Add(MakeShareable(new FJsonValueString(NodeId.ToString())));
-    }
-    JsonObject->SetArrayField(TEXT("VisitedNodes"), VisitedArray);
-    
-    // Save conversation history
-    TArray<TSharedPtr<FJsonValue>> HistoryArray;
-    for (const FConversationEntry& Entry : ConversationHistory)
-    {
-        TSharedPtr<FJsonObject> EntryObj = MakeShareable(new FJsonObject());
-        EntryObj->SetStringField(TEXT("Speaker"), Entry.SpeakerName.ToString());
-        EntryObj->SetStringField(TEXT("Text"), Entry.DialogueText.ToString());
-        EntryObj->SetStringField(TEXT("NodeId"), Entry.NodeId.ToString());
-        EntryObj->SetStringField(TEXT("Timestamp"), Entry.Timestamp.ToString());
-        HistoryArray.Add(MakeShareable(new FJsonValueObject(EntryObj)));
-    }
-    JsonObject->SetArrayField(TEXT("History"), HistoryArray);
-    
-    // Save active tags
-    TArray<TSharedPtr<FJsonValue>> TagsArray;
-    for (const FGameplayTag& Tag : ActiveTags)
-    {
-        TagsArray.Add(MakeShareable(new FJsonValueString(Tag.ToString())));
-    }
-    JsonObject->SetArrayField(TEXT("ActiveTags"), TagsArray);
-    
-    // Save other fields
-    JsonObject->SetNumberField(TEXT("BaseAffinity"), BaseAffinityLevel);
-    JsonObject->SetStringField(TEXT("SessionStart"), SessionStartTime.ToString());
-    
-    if (CurrentNode.IsValid())
-    {
-        JsonObject->SetStringField(TEXT("CurrentNode"), CurrentNode->NodeId.ToString());
-    }
-    
-    // Serialize to string
-    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutJson);
-    FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer);
+    FDialogueJsonSerializer::Get().SaveToJson(this, OutJson);
 }
 
 bool UDialogueSessionContext::LoadFromJson(const FString& Json)
 {
-    TSharedPtr<FJsonObject> JsonObject;
-    TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Json);
-    
-    if (!FJsonSerializer::Deserialize(Reader, JsonObject) || !JsonObject.IsValid())
-    {
-        return false;
-    }
-    
-    // Load custom variables
-    if (const TSharedPtr<FJsonObject>* VarsObj; JsonObject->TryGetObjectField(TEXT("CustomVariables"), VarsObj))
-    {
-        CustomVariables.Empty();
-        for (const auto& Pair : (*VarsObj)->Values)
-        {
-            CustomVariables.Add(FName(*Pair.Key), Pair.Value->AsString());
-        }
-    }
-    
-    // Load visited nodes
-    const TArray<TSharedPtr<FJsonValue>>* VisitedArray;
-    if (JsonObject->TryGetArrayField(TEXT("VisitedNodes"), VisitedArray))
-    {
-        VisitedNodes.Empty();
-        for (const auto& Value : *VisitedArray)
-        {
-            VisitedNodes.Add(FName(*Value->AsString()));
-        }
-    }
-    
-    // Load conversation history
-    const TArray<TSharedPtr<FJsonValue>>* HistoryArray;
-    if (JsonObject->TryGetArrayField(TEXT("History"), HistoryArray))
-    {
-        ConversationHistory.Empty();
-        for (const auto& Value : *HistoryArray)
-        {
-            const TSharedPtr<FJsonObject>* EntryObj;
-            if (Value->TryGetObject(EntryObj))
-            {
-                FConversationEntry Entry;
-                Entry.SpeakerName = FText::FromString((*EntryObj)->GetStringField(TEXT("Speaker")));
-                Entry.DialogueText = FText::FromString((*EntryObj)->GetStringField(TEXT("Text")));
-                Entry.NodeId = FName(*(*EntryObj)->GetStringField(TEXT("NodeId")));
-                FDateTime::Parse((*EntryObj)->GetStringField(TEXT("Timestamp")), Entry.Timestamp);
-                ConversationHistory.Add(Entry);
-            }
-        }
-    }
-    
-    // Load active tags
-    const TArray<TSharedPtr<FJsonValue>>* TagsArray;
-    if (JsonObject->TryGetArrayField(TEXT("ActiveTags"), TagsArray))
-    {
-        ActiveTags.Reset();
-        for (const auto& Value : *TagsArray)
-        {
-            FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*Value->AsString()), false);
-            if (Tag.IsValid())
-            {
-                ActiveTags.AddTag(Tag);
-            }
-        }
-    }
-    
-    // Load other fields
-    BaseAffinityLevel = JsonObject->GetNumberField(TEXT("BaseAffinity"));
-    FDateTime::Parse(JsonObject->GetStringField(TEXT("SessionStart")), SessionStartTime);
-    
-    return true;
+    return FDialogueJsonSerializer::Get().LoadFromJson(this, Json);
 }

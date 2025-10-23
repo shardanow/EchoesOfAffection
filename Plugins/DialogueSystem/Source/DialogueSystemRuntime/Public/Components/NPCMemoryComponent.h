@@ -296,7 +296,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Memory")
 	void AddMemory(const FNPCMemoryEntry& Memory);
 
-	/** —оздать и добавить воспоминание (упрощенный метод) */
+	/** —оздать и добавить воспоминание (упрощенный вариант) */
 	UFUNCTION(BlueprintCallable, Category = "Memory")
 	FName CreateMemory(EMemoryType Type, const FText& Description, float Importance = 50.0f,
 	                   EMemoryEmotion Emotion = EMemoryEmotion::Neutral, AActor* RelatedActor = nullptr);
@@ -309,9 +309,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Memory")
 	bool ForgetMemory(FName MemoryId);
 
-	/** ¬спомнить (отметить что воспоминание было использовано) */
+	/** ¬спомнить (обновить дату последнего воспоминани€ и freshness) */
 	UFUNCTION(BlueprintCallable, Category = "Memory")
 	void RecallMemory(FName MemoryId);
+
+	/** 
+	 * ƒобавить теги к существующему воспоминанию
+	 * 
+	 * @param MemoryId ID воспоминани€ дл€ добавлени€ тегов
+	 * @param Tags “еги дл€ добавлени€
+	 * @return true если воспоминание найдено и теги добавлены
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Memory")
+	bool AddTagsToMemory(FName MemoryId, const FGameplayTagContainer& Tags);
 
 	/** ѕолучить все воспоминани€ */
 	UFUNCTION(BlueprintPure, Category = "Memory")

@@ -90,6 +90,14 @@ UDialogueRunner* UDialogueSubsystem::StartDialogue_Implementation(UDialogueDataA
     // Bind to dialogue ended event
     ActiveDialogue->OnDialogueEnded.AddDynamic(this, &UDialogueSubsystem::HandleDialogueEnded);
     
+    // Bind to node entered event for global broadcasting
+    ActiveDialogue->OnNodeEntered.AddDynamic(this, &UDialogueSubsystem::HandleNodeEntered);
+
+    // Store participants for event broadcasting
+    CurrentPlayer = Player;
+    CurrentNPC = NPC;
+    PreviousNode = nullptr;
+
     // Prepare participants array
     TArray<UObject*> Participants;
     Participants.Add(Player);
@@ -106,6 +114,9 @@ UDialogueRunner* UDialogueSubsystem::StartDialogue_Implementation(UDialogueDataA
     {
         CurrentSaveGame->IncrementNodeVisit(DialogueAsset->DialogueId, DialogueAsset->StartNode);
     }
+    
+    // Broadcast global event
+    OnAnyDialogueStarted.Broadcast(ActiveDialogue, Player, NPC);
     
     UE_LOG(LogDialogueSubsystem, Log, TEXT("Started dialogue '%s'"), *DialogueAsset->DialogueId.ToString());
     
@@ -262,18 +273,28 @@ void UDialogueSubsystem::LoadDialogueAsync(FName DialogueId, FOnDialogueLoadedDe
         return;
     }
     
-    // Start async load
-    UAssetManager& AssetManager = UAssetManager::Get();
-    FStreamableManager& StreamableManager = AssetManager.GetStreamableManager();
-    
+    // Prepare async load info
     FAsyncLoadInfo LoadInfo;
     LoadInfo.DialogueId = DialogueId;
     LoadInfo.AssetPath = *AssetPath;
     LoadInfo.Callbacks.Add(OnLoaded);
     
+    // CRITICAL FIX: Add to map BEFORE starting the async load
+    // This prevents race condition where callback fires before we add to map
+    PendingAsyncLoads.Add(DialogueId, MoveTemp(LoadInfo));
+    
+    // Get reference to the LoadInfo in the map (important after MoveTemp!)
+    FAsyncLoadInfo& LoadInfoRef = PendingAsyncLoads[DialogueId];
+    
+    // Start async load with AssetManager
+    UAssetManager& AssetManager = UAssetManager::Get();
+    FStreamableManager& StreamableManager = AssetManager.GetStreamableManager();
+    
     TWeakObjectPtr<UDialogueSubsystem> WeakThis(this);
     
-    LoadInfo.StreamableHandle = StreamableManager.RequestAsyncLoad(
+    // Now it's safe to start the load - even if callback fires immediately,
+    // the LoadInfo is already in PendingAsyncLoads
+    LoadInfoRef.StreamableHandle = StreamableManager.RequestAsyncLoad(
         *AssetPath,
         FStreamableDelegate::CreateLambda([WeakThis, DialogueId]()
         {
@@ -287,8 +308,6 @@ void UDialogueSubsystem::LoadDialogueAsync(FName DialogueId, FOnDialogueLoadedDe
         false, // Don't start stalled
         TEXT("DialogueSubsystem")
     );
-    
-    PendingAsyncLoads.Add(DialogueId, MoveTemp(LoadInfo));
     
     UE_LOG(LogDialogueSubsystem, Log, TEXT("Started async load for dialogue '%s'"), *DialogueId.ToString());
 }
@@ -721,24 +740,39 @@ void UDialogueSubsystem::HandleDialogueEnded()
 {
     UE_LOG(LogTemp, Log, TEXT("DialogueSubsystem: Dialogue ended callback"));
     
+    // Broadcast global event before cleanup
+    OnAnyDialogueEnded.Broadcast(CurrentPlayer, CurrentNPC);
+
     // Auto-save on dialogue end
     if (bAutoSaveEnabled)
     {
-        if (ActiveDialogue)
-        {
-            UDialogueDataAsset* Asset = ActiveDialogue->GetLoadedDialogue();
-            if (Asset)
+      if (ActiveDialogue)
+  {
+    UDialogueDataAsset* Asset = ActiveDialogue->GetLoadedDialogue();
+   if (Asset)
             {
-                MarkDialogueCompleted(Asset->DialogueId);
+      MarkDialogueCompleted(Asset->DialogueId);
             }
-        }
+    }
         
-        ClearActiveSaveState();
-        SaveDialogueState();
+  ClearActiveSaveState();
+     SaveDialogueState();
     }
     
     // Cleanup
-    ActiveDialogue = nullptr;
+  ActiveDialogue = nullptr;
+    CurrentPlayer = nullptr;
+    CurrentNPC = nullptr;
+    PreviousNode = nullptr;
+}
+
+void UDialogueSubsystem::HandleNodeEntered(UDialogueNode* NewNode)
+{
+    // Broadcast global node change event
+    OnAnyDialogueNodeChanged.Broadcast(NewNode, PreviousNode, ActiveDialogue);
+    
+    // Update previous node tracker
+    PreviousNode = NewNode;
 }
 
 UDialogueRunner* UDialogueSubsystem::AcquireRunner()
@@ -767,8 +801,9 @@ void UDialogueSubsystem::ReleaseRunner(UDialogueRunner* Runner)
     
     // Unbind events
     Runner->OnDialogueEnded.RemoveDynamic(this, &UDialogueSubsystem::HandleDialogueEnded);
-    
-    if (bUseObjectPooling && RunnerPool)
+    Runner->OnNodeEntered.RemoveDynamic(this, &UDialogueSubsystem::HandleNodeEntered);
+ 
+  if (bUseObjectPooling && RunnerPool)
     {
         RunnerPool->Release(Runner);
         UE_LOG(LogDialogueSubsystem, Verbose, TEXT("Returned DialogueRunner to pool"));

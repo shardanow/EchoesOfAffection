@@ -22,6 +22,14 @@ struct FDialogueSessionSaveData;
 DECLARE_DYNAMIC_DELEGATE_TwoParams(FOnDialogueLoadedDelegate, UDialogueDataAsset*, LoadedDialogue, bool, bSuccess);
 
 /**
+ * Global delegates for any dialogue events in the game
+ * Can be used by Player, UI, or any other system to track dialogue state
+ */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnAnyDialogueStartedSignature, UDialogueRunner*, Runner, AActor*, Player, AActor*, NPC);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAnyDialogueEndedSignature, AActor*, Player, AActor*, NPC);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnAnyDialogueNodeChangedSignature, UDialogueNode*, NewNode, UDialogueNode*, PreviousNode, UDialogueRunner*, Runner);
+
+/**
  * Centralized subsystem for dialogue management
  * 
  * Features:
@@ -38,6 +46,22 @@ class DIALOGUESYSTEMRUNTIME_API UDialogueSubsystem : public UGameInstanceSubsyst
     GENERATED_BODY()
 
 public:
+    //~ Begin Global Events
+
+    /** Called when ANY dialogue starts in the game (globally) */
+    UPROPERTY(BlueprintAssignable, Category = "Dialogue|Events")
+    FOnAnyDialogueStartedSignature OnAnyDialogueStarted;
+
+    /** Called when ANY dialogue ends in the game (globally) */
+    UPROPERTY(BlueprintAssignable, Category = "Dialogue|Events")
+ FOnAnyDialogueEndedSignature OnAnyDialogueEnded;
+
+    /** Called when ANY dialogue node changes in the game (globally) */
+    UPROPERTY(BlueprintAssignable, Category = "Dialogue|Events")
+    FOnAnyDialogueNodeChangedSignature OnAnyDialogueNodeChanged;
+
+    //~ End Global Events
+
     //~ Begin USubsystem Interface
     virtual void Initialize(FSubsystemCollectionBase& Collection) override;
     virtual void Deinitialize() override;
@@ -73,6 +97,17 @@ protected:
     //~ Begin Active Dialogues
     UPROPERTY(Transient)
     TObjectPtr<UDialogueRunner> ActiveDialogue;
+
+  /** Current dialogue participants */
+  UPROPERTY(Transient)
+    TObjectPtr<AActor> CurrentPlayer;
+
+    UPROPERTY(Transient)
+    TObjectPtr<AActor> CurrentNPC;
+
+    /** Previous node for tracking changes */
+    UPROPERTY(Transient)
+    TObjectPtr<UDialogueNode> PreviousNode;
 
     UPROPERTY(Transient)
     TArray<FName> DialogueHistory;
@@ -272,4 +307,8 @@ protected:
 
     UFUNCTION()
     void HandleDialogueEnded();
+
+  /** Handles node changes from active runner */
+    UFUNCTION()
+    void HandleNodeEntered(UDialogueNode* NewNode);
 };
