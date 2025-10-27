@@ -1,0 +1,61 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0.2",
+	"FriendlyName": "Character Needs System",
+	"Description": "Production-ready modular character needs system with mood simulation, LOD optimization, data-driven design, and event-driven architecture for AAA RPG/life simulation games.",
+	"Category": "Gameplay",
+	"CreatedBy": "Game Development Team",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Plugins": [
+		{
+			"Name": "TimeOfDaySystem",
+			"Enabled": true,
+			"Optional": true
+		}
+	],
+	"Modules": [
+		{
+			"Name": "NeedsCore",
+			"Type": "Runtime",
+			"LoadingPhase": "PreDefault",
+			"AdditionalDependencies": [
+				"Engine",
+				"CoreUObject",
+				"GameplayTags"
+			]
+		},
+		{
+			"Name": "NeedsRuntime",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine",
+				"CoreUObject",
+				"GameplayTags",
+				"NeedsCore"
+			]
+		},
+		{
+			"Name": "NeedsUI",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine",
+				"CoreUObject",
+				"UMG",
+				"Slate",
+				"SlateCore",
+				"NeedsCore",
+				"NeedsRuntime"
+			]
+		}
+	]
+}

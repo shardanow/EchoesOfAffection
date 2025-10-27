@@ -26,7 +26,7 @@ void UDialogueWidget::NativeConstruct()
     if (ContinueIndicator)
     {
         ContinueIndicator->SetVisibility(ESlateVisibility::Collapsed);
-    }
+ }
 
     if (TypingIndicator)
     {
@@ -35,7 +35,7 @@ void UDialogueWidget::NativeConstruct()
 
     if (SkipHintText)
     {
-        SkipHintText->SetVisibility(ESlateVisibility::Collapsed);
+     SkipHintText->SetVisibility(ESlateVisibility::Collapsed);
     }
 
     // Play intro animation
@@ -44,12 +44,12 @@ void UDialogueWidget::NativeConstruct()
         PlayAnimation(IntroAnimation);
     }
 
-    PlayIntroAnimation();
+  PlayIntroAnimation();
 
     // Play dialogue open sound
     if (DialogueOpenSound)
     {
-      UGameplayStatics::PlaySound2D(this, DialogueOpenSound);
+        UGameplayStatics::PlaySound2D(this, DialogueOpenSound);
     }
 }
 
@@ -60,7 +60,7 @@ void UDialogueWidget::NativeDestruct()
     // Play outro animation
     if (bEnableAnimations && OutroAnimation)
     {
-PlayAnimation(OutroAnimation);
+        PlayAnimation(OutroAnimation);
     }
 
     PlayOutroAnimation();
@@ -773,6 +773,6 @@ void UDialogueWidget::ScrollHistoryToBottom()
 {
     if (HistoryScrollBox)
     {
-        HistoryScrollBox->ScrollToEnd();
+      HistoryScrollBox->ScrollToEnd();
     }
 }

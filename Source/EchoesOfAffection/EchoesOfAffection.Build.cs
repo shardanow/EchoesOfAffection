@@ -8,7 +8,14 @@ public class EchoesOfAffection : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput" });
+		PublicDependencyModuleNames.AddRange(new string[] { 
+			"Core", 
+			"CoreUObject", 
+            "Engine", 
+			"InputCore", 
+			"EnhancedInput",
+			"GameplayTags"  // For FGameplayTag support
+		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });
 
