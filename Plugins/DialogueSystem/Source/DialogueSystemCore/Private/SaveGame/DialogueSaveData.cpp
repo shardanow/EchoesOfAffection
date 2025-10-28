@@ -9,8 +9,8 @@ const FString UDialogueSaveGame::SaveSlotName = TEXT("DialogueSaveSlot");
 const int32 UDialogueSaveGame::UserIndex = 0;
 
 UDialogueSaveGame::UDialogueSaveGame()
-    : SaveVersion(1)
-    , LastSaveTime(FDateTime::Now())
+    : LastSaveTime(FDateTime::Now())
+    , SaveVersion(1)
 {
 }
 

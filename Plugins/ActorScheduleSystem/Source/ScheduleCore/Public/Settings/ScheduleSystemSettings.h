@@ -96,9 +96,10 @@ public:
 
 	// UDeveloperSettings interface
 	virtual FName GetCategoryName() const override { return FName(TEXT("Plugins")); }
+	
+#if WITH_EDITOR
 	virtual FText GetSectionText() const override { return NSLOCTEXT("ScheduleSystem", "ScheduleSystemSettingsSection", "Actor Schedule System"); }
 
-#if WITH_EDITOR
 	virtual FText GetSectionDescription() const override
 	{
 		return NSLOCTEXT("ScheduleSystem", "ScheduleSystemSettingsDescription", "Configure the Actor Schedule System behavior and performance settings");

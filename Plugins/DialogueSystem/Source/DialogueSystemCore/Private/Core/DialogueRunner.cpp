@@ -13,12 +13,14 @@
 #include "Engine/World.h"
 
 UDialogueRunner::UDialogueRunner()
-    : bIsActive(false)
-    , CurrentNode(nullptr)
+ : LoadedDialogue(nullptr)
     , CurrentContext(nullptr)
-    , LoadedDialogue(nullptr)
+    , CurrentNode(nullptr)
+    // NodeHistory not initialized (array default constructor)
     , ConditionEvaluator(nullptr)
     , EffectExecutor(nullptr)
+    // NodeCache not initialized (map default constructor)
+    , bIsActive(false)
     , StateMachine(nullptr)
     , CommandInvoker(nullptr)
     , bEnableCommandHistory(true)

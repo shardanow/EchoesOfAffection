@@ -13,14 +13,10 @@ TArray<UScheduleEntryData*> UScheduleData::GetSortedEntries() const
 
 	if (bAutoSortByPriority)
 	{
-		SortedEntries.Sort([](const TObjectPtr<UScheduleEntryData>& A, const TObjectPtr<UScheduleEntryData>& B)
+		SortedEntries.Sort([](UScheduleEntryData& A, UScheduleEntryData& B)
 		{
-			// Handle null entries - push them to the end
-			if (!A && !B) return false;
-			if (!A) return false; // A is null, B comes first
-			if (!B) return true;  // B is null, A comes first
-			
-			return A->Priority > B->Priority; // Higher priority first
+			// TArray::Sort automatically dereferences pointers
+			return A.Priority > B.Priority; // Higher priority first
 		});
 	}
 
@@ -98,14 +94,10 @@ void UScheduleData::PostEditChangeProperty(FPropertyChangedEvent& PropertyChange
 	// Auto-sort on priority change
 	if (bAutoSortByPriority && PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(UScheduleData, Entries))
 	{
-		Entries.Sort([](const TObjectPtr<UScheduleEntryData>& A, const TObjectPtr<UScheduleEntryData>& B)
+		Entries.Sort([](UScheduleEntryData& A, UScheduleEntryData& B)
 		{
-			// Handle null entries - push them to the end
-			if (!A && !B) return false;
-			if (!A) return false; // A is null, B comes first
-			if (!B) return true;  // B is null, A comes first
-			
-			return A->Priority > B->Priority;
+			// TArray::Sort automatically dereferences pointers
+			return A.Priority > B.Priority;
 		});
 	}
 }

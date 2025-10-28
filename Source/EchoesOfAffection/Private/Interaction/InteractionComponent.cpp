@@ -253,38 +253,79 @@ EInteractionResult UInteractionComponent::TryInteract()
 {
 	if (!bInteractionEnabled)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("TryInteract FAILED: Interaction not enabled"));
 		return EInteractionResult::Failed;
 	}
 
 	if (bIsInteracting)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("TryInteract FAILED: Already interacting"));
 		return EInteractionResult::AlreadyInteracting;
 	}
 
 	if (!FocusedActor)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("TryInteract FAILED: No focused actor"));
 		return EInteractionResult::NotInteractable;
 	}
+
+	UE_LOG(LogTemp, Log, TEXT("TryInteract: Focused actor = %s"), *FocusedActor->GetName());
 
 	// ? FIXED: Use cached interactable info
 	FCachedInteractable CachedInfo(FocusedActor);
 	
 	if (!CachedInfo.IsValid())
 	{
+		UE_LOG(LogTemp, Error, TEXT("TryInteract FAILED: Cached interactable is invalid (no interface found)"));
 		return EInteractionResult::NotInteractable;
 	}
+
+	UE_LOG(LogTemp, Log, TEXT("TryInteract: CachedInfo valid, Interface = %s, Component = %s"), 
+		CachedInfo.Interface ? TEXT("YES") : TEXT("NO"),
+		CachedInfo.Component ? *CachedInfo.Component->GetName() : TEXT("NULL"));
 
 	// Get interaction data
 	FInteractionData InteractionData = CachedInfo.Interface->Execute_GetInteractionData(CachedInfo.GetInterfaceObject(), GetOwner());
 	
+	UE_LOG(LogTemp, Log, TEXT("TryInteract: InteractionData - Name: %s, Distance: %.1f, RequiresLOS: %s"),
+		*InteractionData.InteractionName.ToString(),
+		InteractionData.MaxInteractionDistance,
+		InteractionData.bRequiresLineOfSight ? TEXT("YES") : TEXT("NO"));
+	
 	// Validate interaction
 	if (!ValidateInteraction(FocusedActor, InteractionData))
 	{
+		UE_LOG(LogTemp, Warning, TEXT("TryInteract FAILED: Validation failed"));
+		
+		// Additional validation logging
+		float Distance = FVector::Dist(GetOwner()->GetActorLocation(), FocusedActor->GetActorLocation());
+		UE_LOG(LogTemp, Warning, TEXT("  - Distance: %.1f (Max: %.1f)"), Distance, InteractionData.MaxInteractionDistance);
+		
+		if (InteractionData.bRequiresLineOfSight)
+		{
+			FHitResult HitResult;
+			FCollisionQueryParams QueryParams;
+			QueryParams.AddIgnoredActor(GetOwner());
+			QueryParams.AddIgnoredActor(FocusedActor);
+
+			FVector Start = GetOwner()->GetActorLocation();
+			FVector TargetLocation = FocusedActor->GetComponentsBoundingBox().GetCenter();
+
+			if (GetWorld()->LineTraceSingleByChannel(HitResult, Start, TargetLocation, ECC_Visibility, QueryParams))
+			{
+				UE_LOG(LogTemp, Warning, TEXT("  - Line of sight blocked by: %s"), HitResult.GetActor() ? *HitResult.GetActor()->GetName() : TEXT("Unknown"));
+			}
+		}
+		
 		return EInteractionResult::Failed;
 	}
 
+	UE_LOG(LogTemp, Log, TEXT("TryInteract: Validation passed, calling BeginInteract..."));
+
 	// Start interaction
 	EInteractionResult Result = CachedInfo.Interface->Execute_BeginInteract(CachedInfo.GetInterfaceObject(), GetOwner());
+
+	UE_LOG(LogTemp, Log, TEXT("TryInteract: BeginInteract returned: %d"), (int32)Result);
 
 	if (Result == EInteractionResult::Success)
 	{
@@ -295,11 +336,17 @@ EInteractionResult UInteractionComponent::TryInteract()
 
 		OnInteractionStarted.Broadcast(InteractingActor, InteractionData);
 
+		UE_LOG(LogTemp, Log, TEXT("TryInteract SUCCESS: Interaction started (Duration: %.1f)"), InteractionDuration);
+
 		// If instant interaction, complete immediately
 		if (InteractionDuration <= 0.0f)
 		{
 			CompleteInteraction();
 		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TryInteract: BeginInteract failed with result: %d"), (int32)Result);
 	}
 
 	return Result;

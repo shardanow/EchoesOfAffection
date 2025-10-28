@@ -94,6 +94,7 @@ public:
 	// VALIDATION
 	// ========================================
 
+#if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override
 	{
 		Super::PostEditChangeProperty(PropertyChangedEvent);
@@ -103,6 +104,7 @@ public:
 		ThresholdConfig.WarningThreshold = FMath::Clamp(ThresholdConfig.WarningThreshold, ThresholdConfig.CriticalThreshold, 100.0f);
 		ThresholdConfig.RecoveredThreshold = FMath::Clamp(ThresholdConfig.RecoveredThreshold, ThresholdConfig.WarningThreshold, 100.0f);
 	}
+#endif
 
 	// ========================================
 	// HELPERS
