@@ -315,6 +315,9 @@ protected:
 	void NotifyListeners_Year();
 	void NotifyListeners_TimeScale(float NewScale);
 
+	/** ? NEW: Notify Schedule System about time changes */
+	void NotifyScheduleSystem();
+
 	/** Calculate weekday from total days */
 	ETimeOfDayWeekday CalculateWeekday(int32 TotalDays) const;
 

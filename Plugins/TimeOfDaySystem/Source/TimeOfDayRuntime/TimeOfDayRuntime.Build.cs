@@ -18,6 +18,7 @@ public class TimeOfDayRuntime : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
+			"ScheduleRuntime"
 		});
 	}
 }

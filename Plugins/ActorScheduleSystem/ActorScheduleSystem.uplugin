@@ -1,0 +1,34 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "Actor Schedule System",
+	"Description": "Professional event-driven schedule and action system for Actors with modular, data-driven architecture",
+	"Category": "Gameplay",
+	"CreatedBy": "EchoesOfAffection Team",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "ScheduleCore",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "ScheduleRuntime",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "ScheduleEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	]
+}

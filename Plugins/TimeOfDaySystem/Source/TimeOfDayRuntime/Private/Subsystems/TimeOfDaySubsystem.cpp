@@ -3,6 +3,11 @@
 #include "Subsystems/TimeOfDaySubsystem.h"
 #include "Engine/World.h"
 
+// ✅ ADD THIS: Include ScheduleSubsystem for integration
+#if WITH_EDITOR || WITH_SERVER_CODE || WITH_GAME
+#include "Subsystems/ScheduleSubsystem.h"
+#endif
+
 UTimeOfDaySubsystem::UTimeOfDaySubsystem()
 	: CurrentPhase(ETimeOfDayPhase::Morning)
 	, AccumulatedTime(0.0f)
@@ -696,6 +701,9 @@ void UTimeOfDaySubsystem::ProcessTimeChanges()
 		NotifyListeners_Minute();
 		OnMinuteChanged.Broadcast(CurrentTime);
 
+		// ✅ NEW: Notify Schedule System about time change
+		NotifyScheduleSystem();
+
 		// Check for sunrise/sunset/moonrise/moonset events (minute-based precision)
 		CheckCelestialEvents();
 	}
@@ -734,6 +742,31 @@ void UTimeOfDaySubsystem::ProcessTimeChanges()
 	{
 		NotifyListeners_Year();
 		OnYearChanged.Broadcast(CurrentTime);
+	}
+}
+
+// ✅ NEW: Helper method to notify Schedule System
+void UTimeOfDaySubsystem::NotifyScheduleSystem()
+{
+	// ✅ SAFE: Check if ScheduleSubsystem exists and is ready
+	if (UWorld* World = GetWorld())
+	{
+		// Try to get ScheduleSubsystem - returns nullptr if plugin not loaded
+		UScheduleSubsystem* ScheduleSystem = World->GetSubsystem<UScheduleSubsystem>();
+		
+		// ✅ FIX: Extra safety check - subsystem exists and world is valid
+		if (ScheduleSystem && ScheduleSystem->GetWorld())
+		{
+			// Convert ETimeOfDayWeekday to int32 (0=Sunday, 1=Monday, etc.)
+			const int32 DayOfWeek = static_cast<int32>(CurrentTime.DayOfWeek);
+			
+			// Notify with current time
+			ScheduleSystem->NotifyTimeChanged(CurrentTime.Hour, CurrentTime.Minute, DayOfWeek);
+			
+			// Optional: Log for debugging (comment out in production)
+			// UE_LOG(LogTemp, VeryVerbose, TEXT("📅 Notified Schedule System: %02d:%02d, Day %d"), 
+			//     CurrentTime.Hour, CurrentTime.Minute, DayOfWeek);
+		}
 	}
 }
 
