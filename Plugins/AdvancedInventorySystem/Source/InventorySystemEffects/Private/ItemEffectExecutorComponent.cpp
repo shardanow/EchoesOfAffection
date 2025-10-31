@@ -190,27 +190,33 @@ void UItemEffectExecutorComponent::ExecuteNeedsModifications(UItemEffectDataAsse
 {
 	if (!Effect || !Target)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("ExecuteNeedsModifications: Effect or Target is null!"));
 		return;
 	}
+
+	UE_LOG(LogTemp, Warning, TEXT("ExecuteNeedsModifications: Target=%s, Effect=%s"), 
+		*Target->GetName(), *Effect->GetName());
 
 	// Check if target implements needs system interface
 	if (!Target->Implements<UNeedsSystemInterface>())
 	{
+		UE_LOG(LogTemp, Error, TEXT("  -> Target %s does NOT implement UNeedsSystemInterface!"), *Target->GetName());
 		return;
 	}
 
-	INeedsSystemInterface* NeedsInterface = Cast<INeedsSystemInterface>(Target);
-	if (!NeedsInterface)
-	{
-		return;
-	}
+	UE_LOG(LogTemp, Log, TEXT("  -> Target implements interface! Executing %d needs modifications..."), Effect->NeedsModifications.Num());
 
 	// Execute all needs modifications
+	// Use Execute_ function directly on UObject (works with Blueprint implementations!)
 	for (const FNeedsModification& NeedMod : Effect->NeedsModifications)
 	{
 		if (NeedMod.NeedTag.IsValid())
 		{
-			NeedsInterface->Execute_ModifyNeed(Target, NeedMod.NeedTag, NeedMod.ModificationAmount, NeedMod.bClampValue);
+			UE_LOG(LogTemp, Log, TEXT("  -> Calling ModifyNeed: Tag=%s, Amount=%f"), 
+				*NeedMod.NeedTag.ToString(), NeedMod.ModificationAmount);
+			
+			// Call via Execute_ function which works with Blueprint interfaces
+			INeedsSystemInterface::Execute_ModifyNeed(Target, NeedMod.NeedTag, NeedMod.ModificationAmount, NeedMod.bClampValue);
 		}
 	}
 }

@@ -181,11 +181,18 @@ void UCharacterNeedsComponent::SetNeedValue_Implementation(const FGameplayTag& N
 
 void UCharacterNeedsComponent::ModifyNeedValue_Implementation(const FGameplayTag& NeedTag, float Delta)
 {
+	UE_LOG(LogTemp, Warning, TEXT("CharacterNeedsComponent::ModifyNeedValue_Implementation called! Tag: %s, Delta: %f, Owner: %s"), 
+		*NeedTag.ToString(), Delta, *GetOwner()->GetName());
+	
 	FNeedData* Data = GetNeedDataMutable(NeedTag);
 	if (!Data)
 	{
+		UE_LOG(LogTemp, Error, TEXT("  -> Need data NOT FOUND for tag: %s"), *NeedTag.ToString());
 		return;
 	}
+
+	UE_LOG(LogTemp, Log, TEXT("  -> Current value: %f, New value will be: %f"), 
+		Data->State.CurrentValue, Data->State.CurrentValue + Delta);
 
 	SetNeedValue_Implementation(NeedTag, Data->State.CurrentValue + Delta);
 }
