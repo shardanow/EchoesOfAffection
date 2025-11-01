@@ -25,6 +25,10 @@
 		{
 			"Name": "ActorScheduleSystem",
 			"Enabled": true
+		},
+		{
+			"Name": "QuestSystem",
+			"Enabled": true
 		}
 	]
 }

@@ -309,10 +309,23 @@ protected:
     /** Cancels all pending async loads */
     void CancelPendingAsyncLoads();
 
+    /**
+  * Extract NPC ID from actor using QuestActorComponent or fallback methods.
+     * Priority:
+     * 1. QuestActorComponent (if present)
+     * 2. GameplayTags (e.g., "NPC.Lianne" -> "Lianne")
+     * 3. Actor name (e.g., "BP_Lianne_C_1" -> "Lianne")
+     */
+    FName ExtractNpcId(AActor* NPC);
+
     UFUNCTION()
     void HandleDialogueEnded();
 
-  /** Handles node changes from active runner */
+    /** Handles node changes from active runner */
+  UFUNCTION()
+ void HandleNodeEntered(UDialogueNode* NewNode);
+
+    /** Handles choice selection from active runner */
     UFUNCTION()
-    void HandleNodeEntered(UDialogueNode* NewNode);
+    void HandleChoiceSelected(int32 ChoiceIndex, UDialogueNode* ChoiceNode);
 };

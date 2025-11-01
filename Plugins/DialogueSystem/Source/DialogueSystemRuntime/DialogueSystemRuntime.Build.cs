@@ -18,7 +18,8 @@ public class DialogueSystemRuntime : ModuleRules
 				"Json",
 				"JsonUtilities",
 				"EnhancedInput",
-				"DialogueSystemCore"
+				"DialogueSystemCore",
+				"GameEventBus" // For emitting dialogue events to quest system
 			}
 		);
 		
@@ -29,5 +30,12 @@ public class DialogueSystemRuntime : ModuleRules
 				"NavigationSystem"
 			}
 		);
+		
+		// Optional dependency on QuestSystem (if plugin is enabled)
+		// This allows DialogueSystem to use QuestActorComponent when available
+		if (Target.bBuildAllModules || System.IO.Directory.Exists(System.IO.Path.Combine(Target.ProjectFile.Directory.FullName, "Plugins", "QuestSystem")))
+		{
+			PrivateDependencyModuleNames.Add("QuestSystemRuntime");
+		}
 	}
 }

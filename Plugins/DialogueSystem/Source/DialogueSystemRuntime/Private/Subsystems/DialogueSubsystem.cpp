@@ -12,6 +12,9 @@
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "GameEventBusLibrary.h" // For emitting dialogue events
+#include "GameplayTagAssetInterface.h" // For extracting NPC tags
+#include "QuestActorComponent.h" // For quest actor identification
 
 DEFINE_LOG_CATEGORY_STATIC(LogDialogueSubsystem, Log, All);
 
@@ -37,16 +40,44 @@ void UDialogueSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UDialogueSubsystem::Deinitialize()
 {
-    // Auto-save on shutdown
-    if (bAutoSaveEnabled)
-    {
-        SaveDialogueState();
-    }
+    // Check if world is tearing down
+    UWorld* World = GetWorld();
+    bool bIsTearingDown = !World || World->bIsTearingDown;
     
-    // End any active dialogue
-    if (ActiveDialogue)
+    if (bIsTearingDown)
     {
-        EndActiveDialogue_Implementation();
+        UE_LOG(LogDialogueSubsystem, Log, TEXT("Deinitialize during world teardown - skipping dialogue end callbacks"));
+      
+        // During teardown, cleanup without triggering events
+        if (ActiveDialogue)
+        {
+            // Unbind events to prevent callbacks
+            ActiveDialogue->OnDialogueEnded.RemoveDynamic(this, &UDialogueSubsystem::HandleDialogueEnded);
+            ActiveDialogue->OnNodeEntered.RemoveDynamic(this, &UDialogueSubsystem::HandleNodeEntered);
+            ActiveDialogue->OnChoiceSelected.RemoveDynamic(this, &UDialogueSubsystem::HandleChoiceSelected);
+            
+            // Just clear reference without full EndDialogue
+            ActiveDialogue = nullptr;
+        }
+        
+        // Clear participants
+        CurrentPlayer = nullptr;
+        CurrentNPC = nullptr;
+        PreviousNode = nullptr;
+    }
+    else
+    {
+        // Normal shutdown - do auto-save and proper cleanup
+        if (bAutoSaveEnabled)
+        {
+            SaveDialogueState();
+        }
+        
+        // End any active dialogue
+        if (ActiveDialogue)
+        {
+            EndActiveDialogue_Implementation();
+        }
     }
     
     // Cancel any pending async loads
@@ -54,7 +85,7 @@ void UDialogueSubsystem::Deinitialize()
     
     // Clear cache
     ClearCache();
-    
+  
     // Clean up pool
     if (RunnerPool)
     {
@@ -72,7 +103,7 @@ UDialogueRunner* UDialogueSubsystem::StartDialogue_Implementation(UDialogueDataA
         UE_LOG(LogDialogueSubsystem, Warning, TEXT("StartDialogue - Invalid parameters"));
         return nullptr;
     }
-    
+
     // End previous dialogue if any
     if (ActiveDialogue)
     {
@@ -84,7 +115,7 @@ UDialogueRunner* UDialogueSubsystem::StartDialogue_Implementation(UDialogueDataA
     if (!ActiveDialogue)
     {
         UE_LOG(LogDialogueSubsystem, Error, TEXT("StartDialogue - Failed to acquire DialogueRunner"));
-        return nullptr;
+    return nullptr;
     }
     
     // Bind to dialogue ended event
@@ -93,7 +124,10 @@ UDialogueRunner* UDialogueSubsystem::StartDialogue_Implementation(UDialogueDataA
     // Bind to node entered event for global broadcasting
     ActiveDialogue->OnNodeEntered.AddDynamic(this, &UDialogueSubsystem::HandleNodeEntered);
 
-    // Store participants for event broadcasting
+    // Bind to choice selected event for quest system
+    ActiveDialogue->OnChoiceSelected.AddDynamic(this, &UDialogueSubsystem::HandleChoiceSelected);
+
+// Store participants for event broadcasting
     CurrentPlayer = Player;
     CurrentNPC = NPC;
     PreviousNode = nullptr;
@@ -102,12 +136,12 @@ UDialogueRunner* UDialogueSubsystem::StartDialogue_Implementation(UDialogueDataA
     OnDialogueAboutToStart.Broadcast(ActiveDialogue, Player, NPC);
 
     // Prepare participants array
-    TArray<UObject*> Participants;
-    Participants.Add(Player);
+ TArray<UObject*> Participants;
+ Participants.Add(Player);
     Participants.Add(NPC);
     
     // Start dialogue
-    ActiveDialogue->StartDialogue(DialogueAsset, Participants);
+ ActiveDialogue->StartDialogue(DialogueAsset, Participants);
     
     // Add to history
     DialogueHistory.Add(DialogueAsset->DialogueId);
@@ -121,7 +155,21 @@ UDialogueRunner* UDialogueSubsystem::StartDialogue_Implementation(UDialogueDataA
     // Broadcast global event (AFTER dialogue started)
     OnAnyDialogueStarted.Broadcast(ActiveDialogue, Player, NPC);
     
-    UE_LOG(LogDialogueSubsystem, Log, TEXT("Started dialogue '%s'"), *DialogueAsset->DialogueId.ToString());
+    // ?? EMIT GameEvent for quest system
+    // NEW: Extract NPC ID using QuestActorComponent (priority) with fallback to old logic
+    FName NpcId = ExtractNpcId(NPC);
+  
+    UGameEventBusLibrary::EmitDialogueEvent(
+   this,
+     FGameplayTag::RequestGameplayTag(FName("GameEvent.Dialogue.Started")),
+    NpcId,
+        NAME_None, // NodeId (not relevant for Started event)
+        Player, // Player actor
+NPC // NPC actor
+    );
+  
+    UE_LOG(LogDialogueSubsystem, Log, TEXT("Started dialogue '%s' with NPC '%s'"), 
+        *DialogueAsset->DialogueId.ToString(), *NpcId.ToString());
     
     return ActiveDialogue;
 }
@@ -600,7 +648,7 @@ FDialogueSessionSaveData UDialogueSubsystem::GetActiveSaveState() const
     {
         return CurrentSaveGame->GetActiveSession();
     }
-    return FDialogueSessionSaveData();
+    return FDialogueSessionSaveData(); // Fixed typo: was FDialogueSessionSavingData
 }
 
 void UDialogueSubsystem::ClearActiveSaveState()
@@ -743,8 +791,32 @@ void UDialogueSubsystem::HandleDialogueEnded()
 {
     UE_LOG(LogTemp, Log, TEXT("DialogueSubsystem: Dialogue ended callback"));
     
+    // Get dialogue ID before cleanup
+FName DialogueId;
+    if (ActiveDialogue)
+    {
+        UDialogueDataAsset* Asset = ActiveDialogue->GetLoadedDialogue();
+   if (Asset)
+    {
+            DialogueId = Asset->DialogueId;
+        }
+    }
+ 
     // Broadcast global event before cleanup
     OnAnyDialogueEnded.Broadcast(CurrentPlayer, CurrentNPC);
+
+    // ?? EMIT GameEvent for quest system (dialogue completed)
+    if (CurrentNPC && CurrentPlayer)
+    {
+        UGameEventBusLibrary::EmitDialogueEvent(
+    this,
+   FGameplayTag::RequestGameplayTag(FName("GameEvent.Dialogue.Completed")),
+        DialogueId, // DialogueId
+  NAME_None, // NodeId (not relevant for Completed event)
+       CurrentPlayer, // Player actor
+    CurrentNPC // NPC actor
+    );
+  }
 
     // Auto-save on dialogue end
     if (bAutoSaveEnabled)
@@ -753,10 +825,10 @@ void UDialogueSubsystem::HandleDialogueEnded()
   {
     UDialogueDataAsset* Asset = ActiveDialogue->GetLoadedDialogue();
    if (Asset)
-            {
+  {
       MarkDialogueCompleted(Asset->DialogueId);
-            }
-    }
+        }
+  }
         
   ClearActiveSaveState();
      SaveDialogueState();
@@ -776,6 +848,25 @@ void UDialogueSubsystem::HandleNodeEntered(UDialogueNode* NewNode)
     
     // Update previous node tracker
     PreviousNode = NewNode;
+}
+
+void UDialogueSubsystem::HandleChoiceSelected(int32 ChoiceIndex, UDialogueNode* ChoiceNode)
+{
+    // ?? EMIT GameEvent for quest system (choice selected)
+    if (CurrentNPC && CurrentPlayer && ChoiceNode)
+    {
+UGameEventBusLibrary::EmitDialogueEvent(
+      this,
+   FGameplayTag::RequestGameplayTag(FName("GameEvent.Dialogue.ChoiceSelected")),
+      NAME_None, // DialogueId (not relevant for choice, or could add context->DialogueId if needed)
+            ChoiceNode->NodeId, // NodeId - the choice node that was selected
+  CurrentPlayer, // Player actor
+       CurrentNPC // NPC actor
+  );
+ 
+    UE_LOG(LogTemp, Log, TEXT("DialogueSubsystem: Choice selected - NodeId='%s', Index=%d"),
+    *ChoiceNode->NodeId.ToString(), ChoiceIndex);
+    }
 }
 
 UDialogueRunner* UDialogueSubsystem::AcquireRunner()
@@ -802,18 +893,19 @@ void UDialogueSubsystem::ReleaseRunner(UDialogueRunner* Runner)
         return;
     }
     
-    // Unbind events
+  // Unbind events
     Runner->OnDialogueEnded.RemoveDynamic(this, &UDialogueSubsystem::HandleDialogueEnded);
     Runner->OnNodeEntered.RemoveDynamic(this, &UDialogueSubsystem::HandleNodeEntered);
+    Runner->OnChoiceSelected.RemoveDynamic(this, &UDialogueSubsystem::HandleChoiceSelected);
  
   if (bUseObjectPooling && RunnerPool)
     {
         RunnerPool->Release(Runner);
-        UE_LOG(LogDialogueSubsystem, Verbose, TEXT("Returned DialogueRunner to pool"));
+     UE_LOG(LogDialogueSubsystem, Verbose, TEXT("Returned DialogueRunner to pool"));
     }
     else
     {
-        // Let GC collect it
+      // Let GC collect it
         Runner->ConditionalBeginDestroy();
     }
 }
@@ -846,4 +938,69 @@ void UDialogueSubsystem::TrimRunnerPool()
         RunnerPool->Trim();
         UE_LOG(LogDialogueSubsystem, Log, TEXT("Trimmed runner pool"));
     }
+}
+
+FName UDialogueSubsystem::ExtractNpcId(AActor* NPC)
+{
+    if (!NPC)
+    {
+        return NAME_None;
+    }
+
+    // 1?? PRIORITY: Try QuestActorComponent first
+    UQuestActorComponent* QuestActor = NPC->FindComponentByClass<UQuestActorComponent>();
+    if (QuestActor)
+    {
+        FName Id = QuestActor->GetQuestActorId();
+        if (!Id.IsNone())
+    {
+            UE_LOG(LogDialogueSubsystem, Verbose, TEXT("? NPC ID from QuestActorComponent: '%s'"), *Id.ToString());
+    return Id;
+    }
+    }
+
+    // 2?? FALLBACK: Try IGameplayTagAssetInterface
+    if (NPC->GetClass()->ImplementsInterface(UGameplayTagAssetInterface::StaticClass()))
+  {
+        IGameplayTagAssetInterface* TagInterface = Cast<IGameplayTagAssetInterface>(NPC);
+        if (TagInterface)
+        {
+          FGameplayTagContainer Tags;
+ TagInterface->GetOwnedGameplayTags(Tags);
+          
+            // Look for NPC.* tag
+            FGameplayTag NPCParent = FGameplayTag::RequestGameplayTag(FName("NPC"), false);
+            if (NPCParent.IsValid())
+            {
+              for (const FGameplayTag& Tag : Tags)
+        {
+     if (Tag.MatchesTag(NPCParent))
+  {
+       // Extract last part of tag (e.g., "NPC.Lianne" -> "Lianne")
+            FString TagString = Tag.ToString();
+       int32 LastDotIndex;
+  if (TagString.FindLastChar('.', LastDotIndex))
+       {
+         FName Id = FName(*TagString.RightChop(LastDotIndex + 1));
+          UE_LOG(LogDialogueSubsystem, Verbose, TEXT("? NPC ID from GameplayTag: '%s'"), *Id.ToString());
+            return Id;
+             }
+          }
+ }
+            }
+   }
+    }
+
+    // 3?? LAST RESORT: Extract from actor name
+ FString ActorName = NPC->GetName();
+    ActorName.RemoveFromStart(TEXT("BP_"));
+    int32 UnderscoreIndex;
+    if (ActorName.FindChar('_', UnderscoreIndex))
+    {
+        ActorName = ActorName.Left(UnderscoreIndex);
+    }
+    
+    FName Id = FName(*ActorName);
+    UE_LOG(LogDialogueSubsystem, Verbose, TEXT("?? NPC ID from actor name (fallback): '%s'"), *Id.ToString());
+    return Id;
 }

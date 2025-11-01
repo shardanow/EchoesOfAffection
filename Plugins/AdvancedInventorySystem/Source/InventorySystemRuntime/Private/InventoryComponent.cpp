@@ -8,6 +8,7 @@
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "InventoryComponentGameEventHelper.h"
 
 UInventoryComponent::UInventoryComponent()
 {
@@ -73,6 +74,7 @@ UInventoryItem* UInventoryComponent::AddItem(UItemDataAsset* ItemData, int32 Qua
 	{
 		int32 RemainingQuantity = Quantity;
 		UInventoryItem* LastModifiedItem = nullptr;
+		int32 TotalStackedQuantity = 0;
 
 		// Find all existing items of this type
 		TArray<UInventoryItem*> ExistingItems = FindItemsByData(ItemData);
@@ -86,6 +88,7 @@ UInventoryItem* UInventoryComponent::AddItem(UItemDataAsset* ItemData, int32 Qua
 
 			int32 Added = ExistingItem->AddQuantity(RemainingQuantity);
 			RemainingQuantity -= Added;
+			TotalStackedQuantity += Added;
 			
 			if (Added > 0)
 			{
@@ -102,6 +105,15 @@ UInventoryItem* UInventoryComponent::AddItem(UItemDataAsset* ItemData, int32 Qua
 		{
 			OutResult = EInventoryOperationResult::Success;
 			NotifyInventoryChanged();
+			
+			UE_LOG(LogTemp, Log, TEXT("[InventoryComponent::AddItem] ? Item '%s' added to existing stack! Quantity=%d, Owner=%s"),
+				*ItemData->ItemID.ToString(),
+				TotalStackedQuantity,
+				*GetOwner()->GetName());
+			
+			// Emit GameEventBus event for stacked items
+			UInventoryComponentGameEventHelper::EmitItemAcquiredEvent(this, ItemData, TotalStackedQuantity, GetOwner());
+			
 			return LastModifiedItem;
 		}
 
@@ -163,6 +175,30 @@ UInventoryItem* UInventoryComponent::AddItem(UItemDataAsset* ItemData, int32 Qua
 	{
 		OutResult = EInventoryOperationResult::Success;
 		NotifyInventoryChanged();
+		
+		// Calculate actually added quantity
+		int32 ActuallyAddedQuantity = 0;
+		if (bAutoStack && ItemData->bIsStackable)
+		{
+			// Count added to existing stacks
+			TArray<UInventoryItem*> ExistingItems = FindItemsByData(ItemData);
+			for (UInventoryItem* ExistingItem : ExistingItems)
+			{
+				ActuallyAddedQuantity += ExistingItem->GetQuantity();
+			}
+		}
+		else
+		{
+			ActuallyAddedQuantity = FirstCreatedItem->GetQuantity();
+		}
+		
+		UE_LOG(LogTemp, Log, TEXT("[InventoryComponent::AddItem] ? Item '%s' added! Quantity=%d, Owner=%s"),
+			*ItemData->ItemID.ToString(),
+			ActuallyAddedQuantity,
+			*GetOwner()->GetName());
+		
+		// Emit GameEventBus event
+		UInventoryComponentGameEventHelper::EmitItemAcquiredEvent(this, ItemData, ActuallyAddedQuantity, GetOwner());
 	}
 
 	return FirstCreatedItem;
@@ -508,6 +544,9 @@ bool UInventoryComponent::UseItem(FInventoryItemId ItemId, AActor* User, EInvent
 	OutResult = EInventoryOperationResult::Success;
 	OnItemUsed.Broadcast(Item, User, true);
 	
+	// Emit GameEventBus event
+	UInventoryComponentGameEventHelper::EmitItemUsedEvent(this, Item->ItemData, 1, User);
+	
 	return true;
 }
 
@@ -570,6 +609,10 @@ bool UInventoryComponent::GiftItem(FInventoryItemId ItemId, AActor* Receiver, in
 
 		OutResult = EInventoryOperationResult::Success;
 		OnItemGifted.Broadcast(Item, GetOwner(), Receiver, true);
+		
+		// Emit GameEventBus event
+		UInventoryComponentGameEventHelper::EmitItemGiftedEvent(this, Item->ItemData, QuantityToGift, GetOwner(), Receiver);
+		
 		return true;
 	}
 

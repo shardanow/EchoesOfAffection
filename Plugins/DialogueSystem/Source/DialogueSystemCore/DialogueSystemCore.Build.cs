@@ -39,6 +39,12 @@ public class DialogueSystemCore : ModuleRules
 			}
 		);
 		
+		// Optional dependency on GameEventBus (if plugin is enabled)
+		if (Target.bBuildAllModules || System.IO.Directory.Exists(System.IO.Path.Combine(Target.ProjectFile.Directory.FullName, "Plugins", "GameEventBus")))
+		{
+			PrivateDependencyModuleNames.Add("GameEventBus");
+		}
+		
 		DynamicallyLoadedModuleNames.AddRange(
 			new string[]
 			{

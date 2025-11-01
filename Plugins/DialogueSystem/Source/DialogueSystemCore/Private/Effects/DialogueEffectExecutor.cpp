@@ -225,11 +225,70 @@ void UDialogueEffect_RemoveWorldStateTag::Reverse_Implementation(UDialogueSessio
 // UDialogueEffect_StartQuest
 void UDialogueEffect_StartQuest::Execute_Implementation(UDialogueSessionContext* Context)
 {
-    if (Context)
+    if (!Context)
     {
-        // TODO: Implement through quest system
-        // Context->StartQuest(QuestId);
+  UE_LOG(LogTemp, Error, TEXT("DialogueEffect_StartQuest: Context is null"));
+        return;
     }
+
+  if (QuestId.IsNone())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("DialogueEffect_StartQuest: QuestId is None"));
+        return;
+    }
+
+    // Get world from context
+    UWorld* World = Context->GetWorld();
+    if (!World)
+    {
+        UE_LOG(LogTemp, Error, TEXT("DialogueEffect_StartQuest: Cannot get World from Context"));
+        return;
+}
+
+    // Get QuestSubsystem from GameInstance
+    UGameInstance* GameInstance = World->GetGameInstance();
+    if (!GameInstance)
+    {
+        UE_LOG(LogTemp, Error, TEXT("DialogueEffect_StartQuest: Cannot get GameInstance"));
+        return;
+    }
+
+    // Find QuestSubsystem (use soft reference to avoid hard dependency)
+    UClass* QuestSubsystemClass = FindObject<UClass>(nullptr, TEXT("/Script/QuestSystemRuntime.QuestSubsystem"));
+    if (!QuestSubsystemClass)
+    {
+        UE_LOG(LogTemp, Error, TEXT("DialogueEffect_StartQuest: QuestSubsystem class not found. Make sure QuestSystem plugin is enabled."));
+     return;
+    }
+
+    UObject* QuestSubsystemObj = GameInstance->GetSubsystemBase(QuestSubsystemClass);
+    if (!QuestSubsystemObj)
+    {
+        UE_LOG(LogTemp, Error, TEXT("DialogueEffect_StartQuest: QuestSubsystem not found"));
+        return;
+  }
+
+    // Call StartQuestAsync via reflection
+    UFunction* StartQuestFunc = QuestSubsystemClass->FindFunctionByName(TEXT("StartQuestAsync"));
+    if (!StartQuestFunc)
+    {
+      UE_LOG(LogTemp, Error, TEXT("DialogueEffect_StartQuest: StartQuestAsync function not found"));
+        return;
+    }
+
+    // Prepare parameters: void StartQuestAsync(FName QuestId, FOnQuestStartedDelegate OnStarted)
+    struct FStartQuestParams
+    {
+        FName QuestId;
+        FScriptDelegate OnStarted; // Empty delegate
+    };
+
+    FStartQuestParams Params;
+    Params.QuestId = QuestId;
+
+    QuestSubsystemObj->ProcessEvent(StartQuestFunc, &Params);
+    
+    UE_LOG(LogTemp, Log, TEXT("DialogueEffect_StartQuest: Started quest '%s' from dialogue"), *QuestId.ToString());
 }
 
 FText UDialogueEffect_StartQuest::GetDisplayText_Implementation() const
@@ -240,10 +299,77 @@ FText UDialogueEffect_StartQuest::GetDisplayText_Implementation() const
 // UDialogueEffect_CompleteQuest
 void UDialogueEffect_CompleteQuest::Execute_Implementation(UDialogueSessionContext* Context)
 {
-    if (Context)
+    if (!Context)
     {
-        // TODO: Implement through quest system
-        // Context->CompleteQuest(QuestId);
+      UE_LOG(LogTemp, Error, TEXT("DialogueEffect_CompleteQuest: Context is null"));
+        return;
+    }
+
+    if (QuestId.IsNone())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("DialogueEffect_CompleteQuest: QuestId is None"));
+      return;
+    }
+
+    // Get world from context
+    UWorld* World = Context->GetWorld();
+    if (!World)
+    {
+        UE_LOG(LogTemp, Error, TEXT("DialogueEffect_CompleteQuest: Cannot get World from Context"));
+        return;
+    }
+
+    // Get QuestSubsystem from GameInstance
+    UGameInstance* GameInstance = World->GetGameInstance();
+    if (!GameInstance)
+    {
+      UE_LOG(LogTemp, Error, TEXT("DialogueEffect_CompleteQuest: Cannot get GameInstance"));
+  return;
+    }
+
+    // Find QuestSubsystem (use soft reference to avoid hard dependency)
+    UClass* QuestSubsystemClass = FindObject<UClass>(nullptr, TEXT("/Script/QuestSystemRuntime.QuestSubsystem"));
+    if (!QuestSubsystemClass)
+    {
+      UE_LOG(LogTemp, Error, TEXT("DialogueEffect_CompleteQuest: QuestSubsystem class not found. Make sure QuestSystem plugin is enabled."));
+        return;
+    }
+
+    UObject* QuestSubsystemObj = GameInstance->GetSubsystemBase(QuestSubsystemClass);
+    if (!QuestSubsystemObj)
+    {
+    UE_LOG(LogTemp, Error, TEXT("DialogueEffect_CompleteQuest: QuestSubsystem not found"));
+    return;
+    }
+
+    // Call CompleteQuest via reflection
+    UFunction* CompleteQuestFunc = QuestSubsystemClass->FindFunctionByName(TEXT("CompleteQuest"));
+    if (!CompleteQuestFunc)
+    {
+   UE_LOG(LogTemp, Error, TEXT("DialogueEffect_CompleteQuest: CompleteQuest function not found"));
+        return;
+    }
+
+    // Prepare parameters: bool CompleteQuest(FName QuestId)
+    struct FCompleteQuestParams
+    {
+    FName QuestId;
+    bool ReturnValue;
+    };
+
+    FCompleteQuestParams Params;
+    Params.QuestId = QuestId;
+    Params.ReturnValue = false;
+
+    QuestSubsystemObj->ProcessEvent(CompleteQuestFunc, &Params);
+    
+  if (Params.ReturnValue)
+    {
+        UE_LOG(LogTemp, Log, TEXT("DialogueEffect_CompleteQuest: Completed quest '%s' from dialogue"), *QuestId.ToString());
+    }
+    else
+    {
+      UE_LOG(LogTemp, Warning, TEXT("DialogueEffect_CompleteQuest: Failed to complete quest '%s'"), *QuestId.ToString());
     }
 }
 

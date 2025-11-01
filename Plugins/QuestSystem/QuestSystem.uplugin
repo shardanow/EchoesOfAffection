@@ -1,0 +1,53 @@
+{
+	"FileVersion": 3,
+	"Version": 2,
+	"VersionName": "2.0.0",
+	"FriendlyName": "Quest System",
+	"Description": "Production-ready quest system with modular architecture, async loading, and full Blueprint support",
+	"Category": "Gameplay",
+	"CreatedBy": "Your Studio",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Plugins": [
+		{
+			"Name": "GameEventBus",
+			"Enabled": true,
+			"Optional": true
+		},
+		{
+			"Name": "GameplayTagsEditor",
+			"Enabled": true,
+			"Optional": true
+		}
+	],
+	"Modules": [
+		{
+			"Name": "QuestSystemRuntime",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"PlatformAllowList": [
+				"Win64",
+				"Linux",
+				"Mac",
+				"Android",
+				"IOS"
+			]
+		},
+		{
+			"Name": "QuestSystemEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default",
+			"PlatformAllowList": [
+				"Win64",
+				"Linux",
+				"Mac"
+			]
+		}
+	]
+}

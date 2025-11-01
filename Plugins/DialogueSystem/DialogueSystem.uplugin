@@ -66,6 +66,11 @@
 		{
 			"Name": "EnhancedInput",
 			"Enabled": true
+		},
+		{
+			"Name": "GameEventBus",
+			"Enabled": true,
+			"Optional": true
 		}
 	]
 }

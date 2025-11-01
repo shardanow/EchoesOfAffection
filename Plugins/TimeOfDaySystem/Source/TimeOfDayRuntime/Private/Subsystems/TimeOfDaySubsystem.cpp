@@ -2,6 +2,7 @@
 
 #include "Subsystems/TimeOfDaySubsystem.h"
 #include "Engine/World.h"
+#include "TimeOfDayGameEventHelper.h"
 
 // ✅ ADD THIS: Include ScheduleSubsystem for integration
 #if WITH_EDITOR || WITH_SERVER_CODE || WITH_GAME
@@ -713,6 +714,9 @@ void UTimeOfDaySubsystem::ProcessTimeChanges()
 	{
 		NotifyListeners_Hour();
 		OnHourChanged.Broadcast(CurrentTime);
+		
+		// 🔥 NEW: Emit GameEventBus event
+		UTimeOfDayGameEventHelper::EmitHourChangedEvent(this, CurrentTime.Hour);
 	}
 
 	// Check for day change
@@ -721,6 +725,9 @@ void UTimeOfDaySubsystem::ProcessTimeChanges()
 	{
 		NotifyListeners_Day();
 		OnDayChanged.Broadcast(CurrentTime);
+		
+		// 🔥 NEW: Emit GameEventBus event
+		UTimeOfDayGameEventHelper::EmitDayChangedEvent(this, CurrentDay);
 	}
 
 	// Check for phase change
@@ -735,6 +742,9 @@ void UTimeOfDaySubsystem::ProcessTimeChanges()
 	{
 		NotifyListeners_Season(CurrentTime.Season);
 		OnSeasonChanged.Broadcast(CurrentTime.Season, CurrentTime);
+		
+		// 🔥 NEW: Emit GameEventBus event
+		UTimeOfDayGameEventHelper::EmitSeasonChangedEvent(this, static_cast<int32>(CurrentTime.Season));
 	}
 
 	// Check for year change
@@ -927,6 +937,9 @@ void UTimeOfDaySubsystem::CheckCelestialEvents()
 	{
 		OnSunrise.Broadcast(CurrentTime);
 		UE_LOG(LogTemp, Log, TEXT("☀️ Sunrise at %s"), *GetFormattedTime());
+		
+		// 🔥 NEW: Emit GameEventBus event
+		UTimeOfDayGameEventHelper::EmitSunriseEvent(this);
 	}
 	
 	// Check for SUNSET (sun transitions from up to down)
@@ -934,6 +947,9 @@ void UTimeOfDaySubsystem::CheckCelestialEvents()
 	{
 		OnSunset.Broadcast(CurrentTime);
 		UE_LOG(LogTemp, Log, TEXT("🌆 Sunset at %s"), *GetFormattedTime());
+		
+		// 🔥 NEW: Emit GameEventBus event
+		UTimeOfDayGameEventHelper::EmitSunsetEvent(this);
 	}
 	
 	// Check for MOONRISE (moon transitions from down to up)

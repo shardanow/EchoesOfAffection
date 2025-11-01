@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
+using System.IO;
 
 public class InventorySystemCore : ModuleRules
 {
@@ -25,5 +26,13 @@ public class InventorySystemCore : ModuleRules
 			{
 			}
 		);
+
+		// Optional GameEventBus integration
+		string GameEventBusPath = Path.Combine(Target.ProjectFile.Directory.FullName, "Plugins", "GameEventBus");
+		if (Directory.Exists(GameEventBusPath))
+		{
+			PrivateDependencyModuleNames.Add("GameEventBus");
+			PublicDefinitions.Add("GAMEEVENTBUS_AVAILABLE=1");
+		}
 	}
 }

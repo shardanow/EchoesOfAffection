@@ -43,9 +43,37 @@ void UDialogueCameraComponent::BeginPlay()
 void UDialogueCameraComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	// Ensure camera is deactivated on component destruction
-	if (bCameraActive)
+	// BUT only if not already tearing down world (PIE end, level transition, etc.)
+	UWorld* World = GetWorld();
+	bool bIsTearingDown = !World || World->bIsTearingDown;
+	
+	if (bCameraActive && !bIsTearingDown)
 	{
 		DeactivateDialogueCamera();
+	}
+	else if (bCameraActive && bIsTearingDown)
+	{
+		// During teardown, just cleanup without accessing potentially destroyed actors
+		UE_LOG(LogDialogueCamera, Log, TEXT("EndPlay during world teardown - skipping full deactivation"));
+		
+		// Stop blending and timers
+		bIsBlending = false;
+		SetComponentTickEnabled(false);
+		
+		if (TrackingTimerHandle.IsValid())
+		{
+			GetWorld()->GetTimerManager().ClearTimer(TrackingTimerHandle);
+			TrackingTimerHandle.Invalidate();
+		}
+		
+		// Destroy camera actor if it still exists
+		if (DialogueCameraActor && !DialogueCameraActor->IsActorBeingDestroyed())
+		{
+			DialogueCameraActor->Destroy();
+			DialogueCameraActor = nullptr;
+		}
+		
+		bCameraActive = false;
 	}
 
 	Super::EndPlay(EndPlayReason);
@@ -300,18 +328,23 @@ void UDialogueCameraComponent::DeactivateDialogueCamera()
 	SetComponentTickEnabled(false);
 
 	// Stop tracking timer
-	if (TrackingTimerHandle.IsValid())
+	UWorld* World = GetWorld();
+	if (World && TrackingTimerHandle.IsValid())
 	{
-		GetWorld()->GetTimerManager().ClearTimer(TrackingTimerHandle);
+		World->GetTimerManager().ClearTimer(TrackingTimerHandle);
 		TrackingTimerHandle.Invalidate();
 	}
 
+	// Check if world is tearing down (PIE end, level transition, etc.)
+	bool bIsTearingDown = !World || World->bIsTearingDown;
+	
 	APlayerController* PC = CachedPlayerController.Get();
 	AActor* OriginalTarget = OriginalViewTarget.Get();
 
-	if (PC && bRestoreOriginalCamera)
+	// Only restore camera if not tearing down and we have valid references
+	if (!bIsTearingDown && PC && bRestoreOriginalCamera)
 	{
-		if (OriginalTarget)
+		if (OriginalTarget && !OriginalTarget->IsActorBeingDestroyed())
 		{
 			// Blend back to original view target
 			if (RestoreBlendTime > 0.0f)
@@ -328,9 +361,10 @@ void UDialogueCameraComponent::DeactivateDialogueCamera()
 		else
 		{
 			// Fallback to player pawn
-			if (PC->GetPawn())
+			APawn* PlayerPawn = PC->GetPawn();
+			if (PlayerPawn && !PlayerPawn->IsActorBeingDestroyed())
 			{
-				PC->SetViewTarget(PC->GetPawn());
+				PC->SetViewTarget(PlayerPawn);
 				UE_LOG(LogDialogueCamera, Log, TEXT("Restored view to player pawn"));
 			}
 		}
@@ -341,9 +375,13 @@ void UDialogueCameraComponent::DeactivateDialogueCamera()
 			CachedCameraManager->SetFOV(OriginalFOV);
 		}
 	}
+	else if (bIsTearingDown)
+	{
+		UE_LOG(LogDialogueCamera, Log, TEXT("Skipping camera restoration during world teardown"));
+	}
 
 	// Cleanup camera actor
-	if (DialogueCameraActor)
+	if (DialogueCameraActor && !DialogueCameraActor->IsActorBeingDestroyed())
 	{
 		DestroyDialogueCameraActor();
 	}

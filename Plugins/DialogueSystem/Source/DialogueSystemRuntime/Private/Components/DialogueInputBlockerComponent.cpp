@@ -39,11 +39,21 @@ void UDialogueInputBlockerComponent::BeginPlay()
 
 void UDialogueInputBlockerComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	// Не пытаемся разблокировать если мир уничтожается
-	if (bInputBlocked && EndPlayReason != EEndPlayReason::EndPlayInEditor && EndPlayReason != EEndPlayReason::Quit)
+	// ?? ???????? ?????????????? ???? ??? ????????????
+	// Skip unblock during PIE end or quit to avoid accessing destroyed objects
+	if (bInputBlocked && 
+		EndPlayReason != EEndPlayReason::EndPlayInEditor && 
+		EndPlayReason != EEndPlayReason::Quit)
 	{
 		UnblockInput();
 	}
+	else if (bInputBlocked)
+	{
+		// During PIE end/quit, just mark as unblocked without restoration
+		UE_LOG(LogDialogueInput, Log, TEXT("EndPlay during PIE shutdown - skipping input restoration"));
+		bInputBlocked = false;
+	}
+	
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -158,11 +168,23 @@ void UDialogueInputBlockerComponent::UnblockInput()
 		return;
 	}
 
+	// Check if world is tearing down (PIE end, level transition, etc.)
+	UWorld* World = GetWorld();
+	bool bIsTearingDown = !World || World->bIsTearingDown;
+	
+	// During teardown, skip restoration to avoid accessing destroyed objects
+	if (bIsTearingDown)
+	{
+		UE_LOG(LogDialogueInput, Log, TEXT("UnblockInput: Skipping restoration during world teardown"));
+		bInputBlocked = false;
+		return;
+	}
+
 	// ВАЖНО: Всегда получаем свежий PlayerController
 	APlayerController* PC = FindPlayerController();
 	if (!PC)
 	{
-		UE_LOG(LogDialogueInput, Error, TEXT("UnblockInput: No valid PlayerController found"));
+		UE_LOG(LogDialogueInput, Warning, TEXT("UnblockInput: No valid PlayerController found - possibly during shutdown"));
 		bInputBlocked = false;
 		return;
 	}
