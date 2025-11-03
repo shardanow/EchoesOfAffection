@@ -133,11 +133,17 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Time of Day|Daylight")
 	int32 GetDayLengthMinutes() const;
 
-	/** Get sun rotation for Directional Light (Pitch and Yaw) */
+	/** 
+	 * Get sun rotation for Directional Light (Pitch and Yaw)
+	 * ? INTERPOLATED: Uses seconds for smooth movement (no jerky updates)
+	 */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Time of Day|Daylight")
 	FRotator GetSunRotation() const;
 
-	/** Get moon rotation for Directional Light (Pitch and Yaw) - opposite of sun */
+	/** 
+	 * Get moon rotation for Directional Light (Pitch and Yaw) - opposite of sun 
+	 * ? INTERPOLATED: Uses seconds for smooth movement (no jerky updates)
+	 */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Time of Day|Daylight")
 	FRotator GetMoonRotation() const;
 

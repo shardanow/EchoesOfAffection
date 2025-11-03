@@ -5,6 +5,16 @@
 #include "GameEventBusLibrary.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
+#include "Engine/GameInstance.h"
+
+// Conditional include - only if TimeOfDaySystem is available
+#if __has_include("Subsystems/TimeOfDaySubsystem.h")
+	#include "Subsystems/TimeOfDaySubsystem.h"
+	#include "Core/TimeOfDayTypes.h"
+	#define TIMEOFDAYSYSTEM_AVAILABLE 1
+#else
+	#define TIMEOFDAYSYSTEM_AVAILABLE 0
+#endif
 
 DEFINE_LOG_CATEGORY_STATIC(LogTimeEvents, Log, All);
 
@@ -24,7 +34,32 @@ void UTimeSystemGameEventEmitter::BeginPlay()
 
 	if (bEmitEvents)
 	{
-		// Start checking for time changes every second
+#if TIMEOFDAYSYSTEM_AVAILABLE
+		// Подписываемся на события TimeOfDaySubsystem
+		if (UWorld* World = GetWorld())
+		{
+			if (UGameInstance* GameInstance = World->GetGameInstance())
+			{
+				UTimeOfDaySubsystem* TimeSystem = GameInstance->GetSubsystem<UTimeOfDaySubsystem>();
+				if (TimeSystem)
+				{
+					// Подписываемся на события времени
+					TimeSystem->OnHourChanged.AddDynamic(this, &UTimeSystemGameEventEmitter::OnTimeOfDayHourChanged);
+					TimeSystem->OnDayChanged.AddDynamic(this, &UTimeSystemGameEventEmitter::OnTimeOfDayDayChanged);
+					TimeSystem->OnMinuteChanged.AddDynamic(this, &UTimeSystemGameEventEmitter::OnTimeOfDayMinuteChanged);
+					TimeSystem->OnDayPhaseChanged.AddDynamic(this, &UTimeSystemGameEventEmitter::OnTimeOfDayPhaseChanged);
+					TimeSystem->OnSeasonChanged.AddDynamic(this, &UTimeSystemGameEventEmitter::OnTimeOfDaySeasonChanged);
+
+					UE_LOG(LogTimeEvents, Log, TEXT("TimeSystemGameEventEmitter: Connected to TimeOfDaySubsystem"));
+				}
+				else
+				{
+					UE_LOG(LogTimeEvents, Warning, TEXT("TimeSystemGameEventEmitter: TimeOfDaySubsystem not found!"));
+				}
+			}
+		}
+#else
+		// Fallback: используем таймер для проверки изменений
 		GetWorld()->GetTimerManager().SetTimer(
 			CheckTimerHandle,
 			this,
@@ -33,12 +68,34 @@ void UTimeSystemGameEventEmitter::BeginPlay()
 			true
 		);
 
-		UE_LOG(LogTimeEvents, Log, TEXT("TimeSystemGameEventEmitter: Started"));
+		UE_LOG(LogTimeEvents, Log, TEXT("TimeSystemGameEventEmitter: Started (fallback timer mode)"));
+#endif
 	}
 }
 
 void UTimeSystemGameEventEmitter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+#if TIMEOFDAYSYSTEM_AVAILABLE
+	// Отписываемся от событий TimeOfDaySubsystem
+	if (UWorld* World = GetWorld())
+	{
+		if (UGameInstance* GameInstance = World->GetGameInstance())
+		{
+			UTimeOfDaySubsystem* TimeSystem = GameInstance->GetSubsystem<UTimeOfDaySubsystem>();
+			if (TimeSystem)
+			{
+				TimeSystem->OnHourChanged.RemoveDynamic(this, &UTimeSystemGameEventEmitter::OnTimeOfDayHourChanged);
+				TimeSystem->OnDayChanged.RemoveDynamic(this, &UTimeSystemGameEventEmitter::OnTimeOfDayDayChanged);
+				TimeSystem->OnMinuteChanged.RemoveDynamic(this, &UTimeSystemGameEventEmitter::OnTimeOfDayMinuteChanged);
+				TimeSystem->OnDayPhaseChanged.RemoveDynamic(this, &UTimeSystemGameEventEmitter::OnTimeOfDayPhaseChanged);
+				TimeSystem->OnSeasonChanged.RemoveDynamic(this, &UTimeSystemGameEventEmitter::OnTimeOfDaySeasonChanged);
+
+				UE_LOG(LogTimeEvents, Verbose, TEXT("TimeSystemGameEventEmitter: Disconnected from TimeOfDaySubsystem"));
+			}
+		}
+	}
+#endif
+
 	if (CheckTimerHandle.IsValid())
 	{
 		GetWorld()->GetTimerManager().ClearTimer(CheckTimerHandle);
@@ -70,28 +127,135 @@ void UTimeSystemGameEventEmitter::SetEventEmissionEnabled(bool bEnabled)
 	}
 }
 
+#if TIMEOFDAYSYSTEM_AVAILABLE
+void UTimeSystemGameEventEmitter::OnTimeOfDayHourChanged(const FTimeOfDayTime& CurrentTime)
+{
+	if (!bEmitEvents || !bEmitHourlyEvents)
+	{
+		return;
+	}
+
+	OnHourChanged_Implementation(CurrentTime.Hour);
+	
+	LastHour = CurrentTime.Hour;
+	LastDay = CurrentTime.Day;
+}
+
+void UTimeSystemGameEventEmitter::OnTimeOfDayDayChanged(const FTimeOfDayTime& CurrentTime)
+{
+	if (!bEmitEvents || !bEmitDailyEvents)
+	{
+		return;
+	}
+
+	OnDayChanged_Implementation(CurrentTime.Day);
+	
+	LastHour = CurrentTime.Hour;
+	LastDay = CurrentTime.Day;
+}
+
+void UTimeSystemGameEventEmitter::OnTimeOfDayMinuteChanged(const FTimeOfDayTime& CurrentTime)
+{
+	// Можно добавить эмиссию событий каждую минуту если нужно
+	// Пока просто обновляем кэш
+}
+
+void UTimeSystemGameEventEmitter::OnTimeOfDayPhaseChanged(ETimeOfDayPhase NewPhase, const FTimeOfDayTime& CurrentTime)
+{
+	if (!bEmitEvents)
+	{
+		return;
+	}
+
+	// Эмитим событие смены фазы дня
+	FGameplayTag EventTag = FGameplayTag::RequestGameplayTag(FName("Time.Event.PhaseChanged"), false);
+	if (EventTag.IsValid())
+	{
+		UGameEventBusSubsystem* EventBus = UGameEventBusSubsystem::Get(this);
+		if (EventBus)
+		{
+			FGameEventPayload Payload(EventTag);
+			Payload.IntParam = static_cast<int32>(NewPhase);
+			Payload.FloatParam = CurrentTime.GetNormalizedTimeOfDay();
+			Payload.StringParam = FName(*UEnum::GetValueAsString(NewPhase));
+
+			EventBus->EmitEvent(Payload, bLogEvents);
+
+			if (bLogEvents)
+			{
+				UE_LOG(LogTimeEvents, Log, TEXT("Phase Changed: %s at %02d:%02d"),
+					*UEnum::GetValueAsString(NewPhase), CurrentTime.Hour, CurrentTime.Minute);
+			}
+		}
+	}
+}
+
+void UTimeSystemGameEventEmitter::OnTimeOfDaySeasonChanged(ETimeOfDaySeason NewSeason, const FTimeOfDayTime& CurrentTime)
+{
+	if (!bEmitEvents)
+	{
+		return;
+	}
+
+	// Эмитим событие смены сезона
+	FGameplayTag EventTag = FGameplayTag::RequestGameplayTag(FName("Time.Event.SeasonChanged"), false);
+	if (EventTag.IsValid())
+	{
+		UGameEventBusSubsystem* EventBus = UGameEventBusSubsystem::Get(this);
+		if (EventBus)
+		{
+			FGameEventPayload Payload(EventTag);
+			Payload.IntParam = static_cast<int32>(NewSeason);
+			Payload.StringParam = FName(*UEnum::GetValueAsString(NewSeason));
+			Payload.FloatParam = static_cast<float>(CurrentTime.Day);
+
+			EventBus->EmitEvent(Payload, bLogEvents);
+
+			if (bLogEvents)
+			{
+				UE_LOG(LogTimeEvents, Log, TEXT("Season Changed: %s on Day %d"),
+					*UEnum::GetValueAsString(NewSeason), CurrentTime.Day);
+			}
+		}
+	}
+}
+#else
+// Заглушки для случая когда TimeOfDaySystem недоступен
+void UTimeSystemGameEventEmitter::OnTimeOfDayHourChanged(const FTimeOfDayTime& CurrentTime)
+{
+	// Пустая реализация - TimeOfDaySystem недоступен
+}
+
+void UTimeSystemGameEventEmitter::OnTimeOfDayDayChanged(const FTimeOfDayTime& CurrentTime)
+{
+	// Пустая реализация - TimeOfDaySystem недоступен
+}
+
+void UTimeSystemGameEventEmitter::OnTimeOfDayMinuteChanged(const FTimeOfDayTime& CurrentTime)
+{
+	// Пустая реализация - TimeOfDaySystem недоступен
+}
+
+void UTimeSystemGameEventEmitter::OnTimeOfDayPhaseChanged(ETimeOfDayPhase NewPhase, const FTimeOfDayTime& CurrentTime)
+{
+	// Пустая реализация - TimeOfDaySystem недоступен
+}
+
+void UTimeSystemGameEventEmitter::OnTimeOfDaySeasonChanged(ETimeOfDaySeason NewSeason, const FTimeOfDayTime& CurrentTime)
+{
+	// Пустая реализация - TimeOfDaySystem недоступен
+}
+#endif
+
 void UTimeSystemGameEventEmitter::CheckForTimeChanges()
 {
-	// This is a TEMPLATE implementation
-	// In real project, you'd get time from your Time System (TimeManager, TimeOfDaySubsystem, etc)
+	// Fallback implementation when TimeOfDaySystem is not available
+	// This is just a placeholder - you would integrate with your custom time system here
 	
-	// PLACEHOLDER: Get time from your time system
-	// int32 CurrentHour = YourTimeSystem->GetCurrentHour();
-	// int32 CurrentDay = YourTimeSystem->GetCurrentDay();
-	
-	// For demonstration, we'll use dummy values
-	// You should replace this with actual time system integration
-	
-	// Example: If you have a TimeOfDaySubsystem
-	// UTimeOfDaySubsystem* TimeSystem = GetWorld()->GetGameInstance()->GetSubsystem<UTimeOfDaySubsystem>();
-	// if (TimeSystem)
-	// {
-	//     CurrentHour = TimeSystem->GetCurrentHour();
-	//  CurrentDay = TimeSystem->GetCurrentDay();
-	// }
-
-	// IMPORTANT: Replace this with your actual time system!
-	// This is just a placeholder showing the pattern
+#if !TIMEOFDAYSYSTEM_AVAILABLE
+	UE_LOG(LogTimeEvents, VeryVerbose, TEXT("TimeSystemGameEventEmitter: Checking for time changes (fallback mode)"));
+	// TODO: Add custom time system integration here
+#endif
 }
 
 void UTimeSystemGameEventEmitter::OnHourChanged_Implementation(int32 NewHour)

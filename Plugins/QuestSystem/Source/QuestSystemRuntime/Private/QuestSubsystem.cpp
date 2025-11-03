@@ -448,7 +448,7 @@ void UQuestSubsystem::InitializeGameEventBridge()
 	UE_LOG(LogTemp, Log, TEXT("?? InitializeGameEventBridge: Starting..."));
 
 	// Try to find QuestEventBridge class (may not exist if GameEventBus plugin not enabled)
-	UClass* BridgeClass = FindObject<UClass>(ANY_PACKAGE, TEXT("QuestEventBridge"));
+	UClass* BridgeClass = FindObject<UClass>(nullptr, TEXT("/Script/QuestSystemRuntime.QuestEventBridge"));
 	if (!BridgeClass)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("?? QuestEventBridge class not found via FindObject, trying StaticLoadClass..."));

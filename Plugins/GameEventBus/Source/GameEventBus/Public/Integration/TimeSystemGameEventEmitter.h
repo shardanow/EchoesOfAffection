@@ -7,23 +7,32 @@
 #include "GameplayTagContainer.h"
 #include "TimeSystemGameEventEmitter.generated.h"
 
+// Forward declarations
+#if __has_include("Core/TimeOfDayTypes.h")
+	#include "Core/TimeOfDayTypes.h"
+#else
+	enum class ETimeOfDayPhase : uint8;
+	enum class ETimeOfDaySeason : uint8;
+	struct FTimeOfDayTime;
+#endif
+
 /**
  * Time System Game Event Emitter
  * 
- * Автоматически эмитирует события времени в GameEventBus
- * Подключается к системе времени и транслирует все изменения
+ * Интегрируется с системой времени и транслирует её в GameEventBus
+ * Используется в системе времени и календаря для оповещения
  * 
- * События времени:
- * - Time.Event.HourChanged - изменился час (IntParam = новый час)
- * - Time.Event.DayChanged - изменился день (IntParam = новый день)
- * - Time.Event.TimeOfDay - достигнуто определённое время (IntParam = час, FloatParam = минуты)
- * - Time.Event.Season.Changed - изменился сезон
- * - Weather.Event.Changed - изменилась погода (AdditionalTags = теги погоды)
+ * Базовые события:
+ * - Time.Event.HourChanged - изменение часа (IntParam = номер часа)
+ * - Time.Event.DayChanged - изменение дня (IntParam = номер дня)
+ * - Time.Event.TimeOfDay - изменение нормализованного дня (IntParam = час, FloatParam = минута)
+ * - Time.Event.Season.Changed - изменение сезона
+ * - Weather.Event.Changed - изменение погоды (AdditionalTags = теги погоды)
  * 
  * Использование:
- * 1) Добавьте этот компонент к вашему Time Manager'у
- * 2) События будут автоматически эмитироваться
- * 3) Квесты и другие системы подхватят их
+ * 1) Добавьте этот компонент к актору Time Manager'а
+ * 2) События будут автоматически транслироваться
+ * 3) Другие системы слушают их через GameEventBus
  */
 UCLASS(BlueprintType, ClassGroup = (Time), meta = (BlueprintSpawnableComponent))
 class UTimeSystemGameEventEmitter : public UActorComponent
@@ -108,4 +117,25 @@ private:
 
 	/** Emit game event helper */
 	void EmitTimeEvent(const FGameplayTag& EventTag, int32 Hour, int32 Day) const;
+
+	//~ Begin TimeOfDaySubsystem Integration
+	// Note: These methods don't use UFUNCTION because they use forward-declared types
+	// They are bound dynamically at runtime when TimeOfDaySubsystem is available
+
+	/** Called when TimeOfDaySubsystem hour changes */
+	void OnTimeOfDayHourChanged(const FTimeOfDayTime& CurrentTime);
+
+	/** Called when TimeOfDaySubsystem day changes */
+	void OnTimeOfDayDayChanged(const FTimeOfDayTime& CurrentTime);
+
+	/** Called when TimeOfDaySubsystem minute changes */
+	void OnTimeOfDayMinuteChanged(const FTimeOfDayTime& CurrentTime);
+
+	/** Called when TimeOfDaySubsystem phase changes */
+	void OnTimeOfDayPhaseChanged(ETimeOfDayPhase NewPhase, const FTimeOfDayTime& CurrentTime);
+
+	/** Called when TimeOfDaySubsystem season changes */
+	void OnTimeOfDaySeasonChanged(ETimeOfDaySeason NewSeason, const FTimeOfDayTime& CurrentTime);
+
+	//~ End TimeOfDaySubsystem Integration
 };

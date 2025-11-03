@@ -77,7 +77,7 @@ void UScheduleComponent::EvaluateSchedule()
 	// Find matching entry
 	UScheduleEntryData* MatchingEntry = FindMatchingEntry(Context);
 
-	UE_LOG(LogTemp, Log, TEXT("📋 EvaluateSchedule for %s:"), *GetOwner()->GetName());
+	UE_LOG(LogTemp, Log, TEXT("[SCHEDULE] EvaluateSchedule for %s:"), *GetOwner()->GetName());
 	UE_LOG(LogTemp, Log, TEXT("   MatchingEntry: %s"), MatchingEntry ? *MatchingEntry->GetDisplayText().ToString() : TEXT("NULL"));
 	UE_LOG(LogTemp, Log, TEXT("   CurrentEntry: %s"), CurrentEntry ? *CurrentEntry->GetDisplayText().ToString() : TEXT("NULL"));
 	UE_LOG(LogTemp, Log, TEXT("   CurrentActionHandle.IsValid(): %s"), CurrentActionHandle.IsValid() ? TEXT("TRUE") : TEXT("FALSE"));
@@ -86,7 +86,7 @@ void UScheduleComponent::EvaluateSchedule()
 	// If same entry is already running, continue
 	if (MatchingEntry == CurrentEntry && CurrentActionHandle.IsValid())
 	{
-		UE_LOG(LogTemp, Log, TEXT("   ✅ Same entry already running, skipping execution"));
+		UE_LOG(LogTemp, Log, TEXT("   [OK] Same entry already running, skipping execution"));
 		return;
 	}
 
@@ -95,14 +95,14 @@ void UScheduleComponent::EvaluateSchedule()
 	{
 		if (CurrentEntry->bCanBeInterrupted)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("   ⚠️ Canceling current action (can be interrupted)"));
+			UE_LOG(LogTemp, Warning, TEXT("   [WARN] Canceling current action (can be interrupted)"));
 			// Use Execute_ wrapper for Blueprint interface compatibility
 			IScheduleActionInterface::Execute_CancelAction(CurrentEntry->Action, CurrentActionHandle);
 			CurrentActionHandle = FScheduleActionHandle();
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("   ⚠️ Cannot interrupt current action"));
+			UE_LOG(LogTemp, Warning, TEXT("   [WARN] Cannot interrupt current action"));
 			return; // Can't interrupt current action
 		}
 	}
@@ -115,7 +115,7 @@ void UScheduleComponent::EvaluateSchedule()
 	else if (ScheduleData->FallbackAction && !CurrentActionHandle.IsValid())
 	{
 		// Execute fallback action if no entry matches
-		UE_LOG(LogTemp, Log, TEXT("   📌 Executing fallback action"));
+		UE_LOG(LogTemp, Log, TEXT("   [FALLBACK] Executing fallback action"));
 		FScheduleExecutionContext ExecContext = BuildExecutionContext(FScheduleLocation());
 		// Use Execute_ wrapper for Blueprint interface compatibility
 		CurrentActionHandle = IScheduleActionInterface::Execute_ExecuteAction(ScheduleData->FallbackAction, ExecContext);
@@ -155,7 +155,7 @@ UScheduleEntryData* UScheduleComponent::FindMatchingEntry(const FScheduleEvaluat
 		}
 	}
 
-	UE_LOG(LogTemp, Verbose, TEXT(" ⚠️  No matching entry found for %s at %02d:%02d"), 
+	UE_LOG(LogTemp, Verbose, TEXT("   [WARN] No matching entry found for %s at %02d:%02d"), 
 		*GetOwner()->GetName(), Context.CurrentHour, Context.CurrentMinute);
 
 	return nullptr;
@@ -165,17 +165,17 @@ void UScheduleComponent::ExecuteEntry(UScheduleEntryData* Entry)
 {
 	if (!Entry)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("⚠️ ExecuteEntry called with null Entry for %s"), *GetOwner()->GetName());
+		UE_LOG(LogTemp, Warning, TEXT("[WARN] ExecuteEntry called with null Entry for %s"), *GetOwner()->GetName());
 		return;
 	}
 	
 	if (!Entry->Action)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("⚠️ Entry '%s' has no Action assigned!"), *Entry->GetDisplayText().ToString());
+		UE_LOG(LogTemp, Warning, TEXT("[WARN] Entry '%s' has no Action assigned!"), *Entry->GetDisplayText().ToString());
 		return;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("🎯 Starting action '%s' for %s (Priority: %d)"),
+	UE_LOG(LogTemp, Log, TEXT("[ACTION] Starting action '%s' for %s (Priority: %d)"),
 		*Entry->GetDisplayText().ToString(),
 		*GetOwner()->GetName(),
 		Entry->Priority);
@@ -186,30 +186,30 @@ void UScheduleComponent::ExecuteEntry(UScheduleEntryData* Entry)
 	FScheduleLocation SelectedLocation;
 	if (Entry->LocationSelector)
 	{
-		UE_LOG(LogTemp, Log, TEXT("   📍 LocationSelector assigned: %s (Class: %s)"), 
+		UE_LOG(LogTemp, Log, TEXT("   [LOCATION] LocationSelector assigned: %s (Class: %s)"), 
 			*Entry->LocationSelector->GetName(),
 			*Entry->LocationSelector->GetClass()->GetName());
 
 		// Check if the selector implements the interface
 		if (!Entry->LocationSelector->GetClass()->ImplementsInterface(UScheduleLocationSelectorInterface::StaticClass()))
 		{
-			UE_LOG(LogTemp, Error, TEXT("   ❌ LocationSelector does NOT implement IScheduleLocationSelectorInterface!"));
+			UE_LOG(LogTemp, Error, TEXT("   [ERROR] LocationSelector does NOT implement IScheduleLocationSelectorInterface!"));
 			return;
 		}
 		else
 		{
-			UE_LOG(LogTemp, Log, TEXT("   ✅ LocationSelector implements IScheduleLocationSelectorInterface"));
+			UE_LOG(LogTemp, Log, TEXT("   [OK] LocationSelector implements IScheduleLocationSelectorInterface"));
 		}
 
 		FScheduleLocationContext LocationContext;
 		LocationContext.World = GetWorld();
 		LocationContext.RequestingActor = GetOwner();
 		
-		UE_LOG(LogTemp, Log, TEXT("   📍 Calling SelectLocation..."));
-		UE_LOG(LogTemp, Log, TEXT("      World: %s"), LocationContext.World ? *LocationContext.World->GetName() : TEXT("NULL"));
+		UE_LOG(LogTemp, Log, TEXT("   [LOCATION] Calling SelectLocation..."));
+		UE_LOG(LogTemp, Log, TEXT("    World: %s"), LocationContext.World ? *LocationContext.World->GetName() : TEXT("NULL"));
 		if (LocationContext.RequestingActor.IsValid())
 		{
-			UE_LOG(LogTemp, Log, TEXT("      RequestingActor: %s"), *LocationContext.RequestingActor->GetName());
+			UE_LOG(LogTemp, Log, TEXT("    RequestingActor: %s"), *LocationContext.RequestingActor->GetName());
 		}
 		else
 		{
@@ -219,18 +219,18 @@ void UScheduleComponent::ExecuteEntry(UScheduleEntryData* Entry)
 		// Use Execute_ wrapper for Blueprint interface compatibility
 		bool bLocationSelected = IScheduleLocationSelectorInterface::Execute_SelectLocation(Entry->LocationSelector, LocationContext, SelectedLocation);
 		
-		UE_LOG(LogTemp, Log, TEXT("   📍 SelectLocation returned: %s"), bLocationSelected ? TEXT("TRUE") : TEXT("FALSE"));
+		UE_LOG(LogTemp, Log, TEXT("   [LOCATION] SelectLocation returned: %s"), bLocationSelected ? TEXT("TRUE") : TEXT("FALSE"));
 		
 		if (!bLocationSelected)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("⚠️ Failed to select location for schedule entry: %s"), 
+			UE_LOG(LogTemp, Warning, TEXT("[WARN] Failed to select location for schedule entry: %s"), 
 				*Entry->GetDisplayText().ToString());
 			UE_LOG(LogTemp, Warning, TEXT("   Selector: %s"), *Entry->LocationSelector->GetName());
 			UE_LOG(LogTemp, Warning, TEXT("   Selector Class: %s"), *Entry->LocationSelector->GetClass()->GetName());
 			return;
 		}
 		
-		UE_LOG(LogTemp, Log, TEXT("   📍 Selected location: %s"), *SelectedLocation.Location.ToString());
+		UE_LOG(LogTemp, Log, TEXT("   [LOCATION] Selected location: %s"), *SelectedLocation.Location.ToString());
 		if (SelectedLocation.ReferenceActor.IsValid())
 		{
 			UE_LOG(LogTemp, Log, TEXT("      ReferenceActor: %s"), *SelectedLocation.ReferenceActor->GetName());
@@ -242,7 +242,7 @@ void UScheduleComponent::ExecuteEntry(UScheduleEntryData* Entry)
 	}
 	else
 	{
-		UE_LOG(LogTemp, Log, TEXT("   📍 No LocationSelector assigned - using default location"));
+		UE_LOG(LogTemp, Log, TEXT("   [LOCATION] No LocationSelector assigned - using default location"));
 	}
 
 	// Build execution context
@@ -255,18 +255,18 @@ void UScheduleComponent::ExecuteEntry(UScheduleEntryData* Entry)
 	}
 	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("   ❌ Action does not implement IScheduleActionInterface!"));
+		UE_LOG(LogTemp, Error, TEXT(" [ERROR] Action does not implement IScheduleActionInterface!"));
 		return;
 	}
 
 	if (CurrentActionHandle.IsValid())
 	{
-		UE_LOG(LogTemp, Log, TEXT("   ✅ Action started successfully"));
+		UE_LOG(LogTemp, Log, TEXT("   [OK] Action started successfully"));
 		OnActionStarted.Broadcast(CurrentActionHandle);
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("   ⚠️ Action returned invalid handle!"));
+		UE_LOG(LogTemp, Warning, TEXT("   [WARN] Action returned invalid handle!"));
 	}
 }
 

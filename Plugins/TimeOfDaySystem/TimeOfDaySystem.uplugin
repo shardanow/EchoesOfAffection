@@ -53,6 +53,10 @@
 		{
 			"Name": "ActorScheduleSystem",
 			"Enabled": true
+		},
+		{
+			"Name": "GameEventBus",
+			"Enabled": true
 		}
 	]
 }

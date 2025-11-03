@@ -27,7 +27,15 @@
 			"Enabled": true
 		},
 		{
+			"Name": "GameEventBus",
+			"Enabled": true
+		},
+		{
 			"Name": "QuestSystem",
+			"Enabled": true
+		},
+		{
+			"Name": "RelationshipSystem",
 			"Enabled": true
 		}
 	]

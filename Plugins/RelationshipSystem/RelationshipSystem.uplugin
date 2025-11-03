@@ -1,0 +1,59 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0.0",
+	"FriendlyName": "Relationship System",
+	"Description": "Production-ready, data-driven relationship system for managing complex NPC/faction relationships with full Blueprint support",
+	"Category": "Gameplay",
+	"CreatedBy": "EchoesOfAffection Team",
+	"CreatedByURL": "https://github.com/shardanow/EchoesOfAffection",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "RelationshipSystemCore",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"PlatformAllowList": [
+				"Win64",
+				"Mac",
+				"Linux",
+				"Android",
+				"IOS"
+			]
+		},
+		{
+			"Name": "RelationshipSystemUI",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"PlatformAllowList": [
+				"Win64",
+				"Mac",
+				"Linux",
+				"Android",
+				"IOS"
+			]
+		},
+		{
+			"Name": "RelationshipSystemEditor",
+			"Type": "Editor",
+			"LoadingPhase": "PostEngineInit",
+			"PlatformAllowList": [
+				"Win64",
+				"Mac",
+				"Linux"
+			]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "GameEventBus",
+			"Enabled": true
+		}
+	]
+}

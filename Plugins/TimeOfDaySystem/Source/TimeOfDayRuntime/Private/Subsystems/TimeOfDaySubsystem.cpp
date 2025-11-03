@@ -4,7 +4,7 @@
 #include "Engine/World.h"
 #include "TimeOfDayGameEventHelper.h"
 
-// ✅ ADD THIS: Include ScheduleSubsystem for integration
+// ADD THIS: Include ScheduleSubsystem for integration
 #if WITH_EDITOR || WITH_SERVER_CODE || WITH_GAME
 #include "Subsystems/ScheduleSubsystem.h"
 #endif
@@ -33,14 +33,14 @@ void UTimeOfDaySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	if (Settings)
 	{
-		UE_LOG(LogTemp, Log, TEXT("✅ Loaded TimeOfDaySettings from: %s"), *SettingsPath);
+		UE_LOG(LogTemp, Log, TEXT("[OK] Loaded TimeOfDaySettings from: %s"), *SettingsPath);
 		InitializeWithSettings(Settings);
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("⚠️ TimeOfDaySettings not found at: %s"), *SettingsPath);
-		UE_LOG(LogTemp, Warning, TEXT("⚠️ Using default C++ values. Initial time will be: 06:00 (Hour=6)"));
-		UE_LOG(LogTemp, Warning, TEXT("💡 Create a DataAsset at Content/TimeOfDaySystem/DA_TimeOfDaySettings to configure initial time!"));
+		UE_LOG(LogTemp, Warning, TEXT("[WARN] TimeOfDaySettings not found at: %s"), *SettingsPath);
+		UE_LOG(LogTemp, Warning, TEXT("[WARN] Using default C++ values. Initial time will be: 06:00 (Hour=6)"));
+		UE_LOG(LogTemp, Warning, TEXT("[INFO] Create a DataAsset at Content/TimeOfDaySystem/DA_TimeOfDaySettings to configure initial time!"));
 		
 		// Use default values if no settings asset is found
 		CurrentTime = FTimeOfDayTime();
@@ -483,8 +483,10 @@ FRotator UTimeOfDaySubsystem::GetSunRotation() const
 		return FRotator(Pitch, Yaw, 0.0f);
 	}
 
-	// Calculate sun position over full 24-hour period
-	const int32 CurrentMinutes = CurrentTime.Hour * 60 + CurrentTime.Minute;
+	// NEW: Include seconds for smooth interpolation
+	// Calculate exact time in minutes (with fractional seconds)
+	const float CurrentMinutesExact = (CurrentTime.Hour * 60.0f) + CurrentTime.Minute + (CurrentTime.Second / 60.0f);
+	
 	const int32 SunriseMinutes = GetSunriseMinutes();
 	const int32 SunsetMinutes = GetSunsetMinutes();
 	
@@ -495,50 +497,38 @@ FRotator UTimeOfDaySubsystem::GetSunRotation() const
 	// Calculate normalized position over 24 hours (0.0 = sunrise, 1.0 = next sunrise)
 	float NormalizedPosition24h;
 	
-	if (CurrentMinutes >= SunriseMinutes && CurrentMinutes < SunsetMinutes)
+	if (CurrentMinutesExact >= SunriseMinutes && CurrentMinutesExact < SunsetMinutes)
 	{
 		// DAYTIME: Sunrise to Sunset
-		// Map to 0.0 (sunrise) → 0.5 (sunset)
-		const int32 MinutesSinceSunrise = CurrentMinutes - SunriseMinutes;
-		NormalizedPosition24h = 0.5f * (static_cast<float>(MinutesSinceSunrise) / static_cast<float>(DayLength));
+		// Map to 0.0 (sunrise) to 0.5 (sunset)
+		const float MinutesSinceSunrise = CurrentMinutesExact - SunriseMinutes;
+		NormalizedPosition24h = 0.5f * (MinutesSinceSunrise / static_cast<float>(DayLength));
 	}
 	else
 	{
 		// NIGHTTIME: Sunset to Sunrise
-		// Map to 0.5 (sunset) → 1.0 (next sunrise)
-		int32 MinutesSinceSunset;
+		// Map to 0.5 (sunset) to 1.0 (next sunrise)
+		float MinutesSinceSunset;
 		
-		if (CurrentMinutes >= SunsetMinutes)
+		if (CurrentMinutesExact >= SunsetMinutes)
 		{
 			// After sunset, same day
-			MinutesSinceSunset = CurrentMinutes - SunsetMinutes;
+			MinutesSinceSunset = CurrentMinutesExact - SunsetMinutes;
 		}
 		else
 		{
 			// After midnight, before sunrise
-			MinutesSinceSunset = (1440 - SunsetMinutes) + CurrentMinutes;
+			MinutesSinceSunset = (1440 - SunsetMinutes) + CurrentMinutesExact;
 		}
 		
-		NormalizedPosition24h = 0.5f + 0.5f * (static_cast<float>(MinutesSinceSunset) / static_cast<float>(NightLength));
+		NormalizedPosition24h = 0.5f + 0.5f * (MinutesSinceSunset / static_cast<float>(NightLength));
 	}
 	
-	// Convert to sun elevation:
-	// 0.0 (sunrise) → 0°
-	// 0.25 (noon) → 90°
-	// 0.5 (sunset) → 0°
-	// 0.75 (midnight) → -90°
-	// 1.0 (next sunrise) → 0°
-	
-	// Use full sine wave over 24 hours
-	const float Radians = NormalizedPosition24h * PI * 2.0f; // 0 → 2π
+	// Convert to sun elevation using smooth sine wave
+	const float Radians = NormalizedPosition24h * PI * 2.0f;
 	const float Pitch = -FMath::Sin(Radians) * 90.0f;
 	
-	// Yaw: Complete rotation East → South → West → North → East
-	// 0.0 (sunrise) → 90° (East)
-	// 0.25 (noon) → 0° (South)
-	// 0.5 (sunset) → -90° (West)
-	// 0.75 (midnight) → -180° or 180° (North)
-	// 1.0 (next sunrise) → 90° (East)
+	// Yaw: Complete rotation East to South to West to North to East
 	const float Yaw = 90.0f - (NormalizedPosition24h * 360.0f);
 	
 	return FRotator(Pitch, Yaw, 0.0f);
@@ -549,9 +539,7 @@ FRotator UTimeOfDaySubsystem::GetMoonRotation() const
 	// Moon is opposite to the sun (180° offset)
 	const FRotator SunRotation = GetSunRotation();
 	
-	// Inverse the rotation:
-	// - Pitch stays the same magnitude but opposite sign (if sun is up, moon is down)
-	// - Yaw is offset by 180°
+	// Inverse the rotation
 	const float MoonPitch = -SunRotation.Pitch;
 	const float MoonYaw = SunRotation.Yaw + 180.0f;
 	
@@ -702,7 +690,7 @@ void UTimeOfDaySubsystem::ProcessTimeChanges()
 		NotifyListeners_Minute();
 		OnMinuteChanged.Broadcast(CurrentTime);
 
-		// ✅ NEW: Notify Schedule System about time change
+		// NEW: Notify Schedule System about time change
 		NotifyScheduleSystem();
 
 		// Check for sunrise/sunset/moonrise/moonset events (minute-based precision)
@@ -715,7 +703,7 @@ void UTimeOfDaySubsystem::ProcessTimeChanges()
 		NotifyListeners_Hour();
 		OnHourChanged.Broadcast(CurrentTime);
 		
-		// 🔥 NEW: Emit GameEventBus event
+		// NEW: Emit GameEventBus event
 		UTimeOfDayGameEventHelper::EmitHourChangedEvent(this, CurrentTime.Hour);
 	}
 
@@ -726,7 +714,7 @@ void UTimeOfDaySubsystem::ProcessTimeChanges()
 		NotifyListeners_Day();
 		OnDayChanged.Broadcast(CurrentTime);
 		
-		// 🔥 NEW: Emit GameEventBus event
+		// NEW: Emit GameEventBus event
 		UTimeOfDayGameEventHelper::EmitDayChangedEvent(this, CurrentDay);
 	}
 
@@ -743,7 +731,7 @@ void UTimeOfDaySubsystem::ProcessTimeChanges()
 		NotifyListeners_Season(CurrentTime.Season);
 		OnSeasonChanged.Broadcast(CurrentTime.Season, CurrentTime);
 		
-		// 🔥 NEW: Emit GameEventBus event
+		// NEW: Emit GameEventBus event
 		UTimeOfDayGameEventHelper::EmitSeasonChangedEvent(this, static_cast<int32>(CurrentTime.Season));
 	}
 
@@ -755,16 +743,16 @@ void UTimeOfDaySubsystem::ProcessTimeChanges()
 	}
 }
 
-// ✅ NEW: Helper method to notify Schedule System
+// NEW: Helper method to notify Schedule System
 void UTimeOfDaySubsystem::NotifyScheduleSystem()
 {
-	// ✅ SAFE: Check if ScheduleSubsystem exists and is ready
+	// SAFE: Check if ScheduleSubsystem exists and is ready
 	if (UWorld* World = GetWorld())
 	{
 		// Try to get ScheduleSubsystem - returns nullptr if plugin not loaded
 		UScheduleSubsystem* ScheduleSystem = World->GetSubsystem<UScheduleSubsystem>();
 		
-		// ✅ FIX: Extra safety check - subsystem exists and world is valid
+		// FIX: Extra safety check - subsystem exists and world is valid
 		if (ScheduleSystem && ScheduleSystem->GetWorld())
 		{
 			// Convert ETimeOfDayWeekday to int32 (0=Sunday, 1=Monday, etc.)
@@ -774,7 +762,7 @@ void UTimeOfDaySubsystem::NotifyScheduleSystem()
 			ScheduleSystem->NotifyTimeChanged(CurrentTime.Hour, CurrentTime.Minute, DayOfWeek);
 			
 			// Optional: Log for debugging (comment out in production)
-			// UE_LOG(LogTemp, VeryVerbose, TEXT("📅 Notified Schedule System: %02d:%02d, Day %d"), 
+			// UE_LOG(LogTemp, VeryVerbose, TEXT("[SCHEDULE] Notified Schedule System: %02d:%02d, Day %d"), 
 			//     CurrentTime.Hour, CurrentTime.Minute, DayOfWeek);
 		}
 	}
@@ -936,9 +924,9 @@ void UTimeOfDaySubsystem::CheckCelestialEvents()
 	if (bIsSunUp && !bPreviousWasSunUp)
 	{
 		OnSunrise.Broadcast(CurrentTime);
-		UE_LOG(LogTemp, Log, TEXT("☀️ Sunrise at %s"), *GetFormattedTime());
+		UE_LOG(LogTemp, Log, TEXT("[SUNRISE] Sunrise at %s"), *GetFormattedTime());
 		
-		// 🔥 NEW: Emit GameEventBus event
+		// NEW: Emit GameEventBus event
 		UTimeOfDayGameEventHelper::EmitSunriseEvent(this);
 	}
 	
@@ -946,9 +934,9 @@ void UTimeOfDaySubsystem::CheckCelestialEvents()
 	if (!bIsSunUp && bPreviousWasSunUp)
 	{
 		OnSunset.Broadcast(CurrentTime);
-		UE_LOG(LogTemp, Log, TEXT("🌆 Sunset at %s"), *GetFormattedTime());
+		UE_LOG(LogTemp, Log, TEXT("[SUNSET] Sunset at %s"), *GetFormattedTime());
 		
-		// 🔥 NEW: Emit GameEventBus event
+		// NEW: Emit GameEventBus event
 		UTimeOfDayGameEventHelper::EmitSunsetEvent(this);
 	}
 	
@@ -958,7 +946,7 @@ void UTimeOfDaySubsystem::CheckCelestialEvents()
 	{
 		const float MoonPhase = GetMoonPhase();
 		OnMoonrise.Broadcast(MoonPhase, CurrentTime);
-		UE_LOG(LogTemp, Log, TEXT("🌙 Moonrise at %s (Phase: %.2f)"), *GetFormattedTime(), MoonPhase);
+		UE_LOG(LogTemp, Log, TEXT("[MOONRISE] Moonrise at %s (Phase: %.2f)"), *GetFormattedTime(), MoonPhase);
 	}
 	
 	// Check for MOONSET (moon transitions from up to down)
@@ -967,7 +955,7 @@ void UTimeOfDaySubsystem::CheckCelestialEvents()
 	{
 		const float MoonPhase = GetMoonPhase();
 		OnMoonset.Broadcast(MoonPhase, CurrentTime);
-		UE_LOG(LogTemp, Log, TEXT("🌑 Moonset at %s (Phase: %.2f)"), *GetFormattedTime(), MoonPhase);
+		UE_LOG(LogTemp, Log, TEXT("[MOONSET] Moonset at %s (Phase: %.2f)"), *GetFormattedTime(), MoonPhase);
 	}
 	
 	// Update previous states

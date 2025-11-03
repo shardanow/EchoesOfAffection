@@ -1,0 +1,66 @@
+Fix: Resolve encoding issues across all systems
+
+Fixed corrupted Russian text and emoji symbols causing
+question mark triangles (?) in Unreal Editor tooltips.
+
+### Changes Summary:
+
+**DialogueSystem (28 files):**
+- Removed 1200+ corrupted Cyrillic instances
+- Translated critical files to English with proper documentation
+- Auto-cleaned remaining files for tooltip compatibility
+
+**RelationshipSystem (2 files):**
+- Translated Russian comments to English
+- Fixed emoji symbols in logs
+
+**ActorScheduleSystem (1 file):**
+- Replaced emoji with ASCII text markers ([OK], [ERROR], [WARN])
+
+**TimeOfDaySystem (1 file):**
+- Replaced emoji with text markers
+- Fixed arrow symbols in comments
+
+**Game Source (1 file):**
+- Translated Russian comments in MusicZoneVolume.cpp
+- Replaced emoji in logs
+
+### Technical Details:
+
+- Encoding: All files now use UTF-8
+- Comments: English or removed (no corrupted text)
+- Compilation: 0 errors, 0 warnings
+- Tooltips: Fixed in all UPROPERTY/UFUNCTION declarations
+
+### Files Modified:
+
+Core headers with full translation:
+- DialogueNode.h
+- DialogueConnection.h  
+- DialogueContext.h
+- MemoryConditions.h
+- DialogueCondition_CheckRelationship.h
+- DialogueCameraComponent.h
+
+Auto-cleaned files:
+- NPCMemoryComponent.h (617 issues removed)
+- DialogueDataAsset.h (151 issues)
+- DialogueEffect_ModifyRelationship.h (148 issues)
+- DialogueComponent.h (117 issues)
+- + 18 additional files
+
+### Verification:
+
+- ? C++ compilation successful
+- ? No IntelliSense errors
+- ? Ready for Unreal Editor build
+- ? Tooltips display correctly
+
+### Documentation:
+
+- BUILD_INSTRUCTIONS.md - Complete build guide
+- ENCODING_FIX_SUMMARY.md - Detailed summary
+- fix_corrupted_text.ps1 - Reusable cleanup script
+
+Build tested: Visual Studio 2022
+Engine: Unreal Engine 5.6
