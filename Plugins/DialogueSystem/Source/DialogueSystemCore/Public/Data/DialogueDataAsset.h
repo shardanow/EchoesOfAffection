@@ -147,6 +147,38 @@ UPROPERTY(EditAnywhere, Instanced, BlueprintReadOnly, Category = "Graph")
 
     //~ End AI Integration
 
+    //~ Begin Sequence-Based Auto-Positioning (v1.17.0)
+
+    /** 
+     * Automatically extract and apply actor positions from Level Sequence keyframes
+     * 
+     * When enabled, system will:
+     * - Extract actor positions from sequence animation tracks
+     * - Position actors BEFORE sequence plays (start frame)
+     * - Position actors AFTER sequence finishes (end frame)
+     * 
+     * This eliminates manual position setup for sequences!
+*/
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Sequence Positioning")
+    bool bExtractPositionsFromSequence = false;
+
+    /** Position actors to sequence START frame (frame 0) BEFORE sequence plays */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Sequence Positioning", 
+        meta = (EditCondition = "bExtractPositionsFromSequence", EditConditionHides))
+    bool bPositionActorsAtSequenceStart = true;
+
+    /** Position actors to sequence END frame (last frame) AFTER sequence finishes */
+  UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Sequence Positioning", 
+        meta = (EditCondition = "bExtractPositionsFromSequence", EditConditionHides))
+    bool bPositionActorsAtSequenceEnd = false;
+
+    /** How to move actors to extracted positions (Teleport = instant, AIMoveTo = pathfinding) */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Sequence Positioning", 
+        meta = (EditCondition = "bExtractPositionsFromSequence", EditConditionHides))
+    EDialoguePositioningMode SequencePositioningMode = EDialoguePositioningMode::Teleport;
+
+    //~ End Sequence-Based Auto-Positioning
+
 public:
     //~ Begin API
 

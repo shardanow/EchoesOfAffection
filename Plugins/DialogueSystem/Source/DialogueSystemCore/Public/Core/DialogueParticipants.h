@@ -78,13 +78,26 @@ public:
 
     //==========================================================================
     // Additional Participants (Future)
+    // v1.16: Extended for Multi-NPC Dialogue Support
     //==========================================================================
+
+    /** NEW v1.16: Get actor by Persona ID (supports Primary, Additional NPCs, Player) */
+    UFUNCTION(BlueprintCallable, Category = "Dialogue|Participants")
+    AActor* GetActorByPersonaId(FName PersonaId) const;
+
+    /** NEW v1.16: Set actor for specific Persona ID */
+    UFUNCTION(BlueprintCallable, Category = "Dialogue|Participants")
+    void SetActorForPersona(FName PersonaId, AActor* Actor);
+
+    /** NEW v1.16: Get all registered Persona IDs */
+    UFUNCTION(BlueprintPure, Category = "Dialogue|Participants")
+    TArray<FName> GetAllPersonaIds() const;
 
     /** Add additional participant */
     UFUNCTION(BlueprintCallable, Category = "Dialogue|Participants")
     void AddAdditionalParticipant(UObject* Participant);
 
-    /** Remove additional participant */
+  /** Remove additional participant */
     UFUNCTION(BlueprintCallable, Category = "Dialogue|Participants")
     void RemoveAdditionalParticipant(UObject* Participant);
 
@@ -121,5 +134,9 @@ UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Participants")
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Participants")
     TArray<TObjectPtr<UObject>> AdditionalParticipants;
 
-    friend class UDialogueSessionContext;
+    /** NEW v1.16: Persona ID to Actor mapping for multi-NPC dialogues */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Participants")
+  TMap<FName, TObjectPtr<AActor>> PersonaActorMap;
+
+  friend class UDialogueSessionContext;
 };

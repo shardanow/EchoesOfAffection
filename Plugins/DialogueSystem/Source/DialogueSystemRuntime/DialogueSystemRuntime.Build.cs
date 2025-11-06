@@ -27,7 +27,8 @@ public class DialogueSystemRuntime : ModuleRules
 			new string[]
 			{
 				"AIModule",
-				"NavigationSystem"
+				"NavigationSystem",
+				"Niagara" // For teleport VFX
 			}
 		);
 		

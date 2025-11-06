@@ -75,4 +75,50 @@ void UDialogueParticipants::Reset()
     NPC = nullptr;
     BaseAffinityLevel = 0.0f;
     AdditionalParticipants.Empty();
+    PersonaActorMap.Empty(); // v1.16
+}
+
+//==============================================================================
+// v1.16: Multi-NPC Dialogue Support
+//==============================================================================
+
+AActor* UDialogueParticipants::GetActorByPersonaId(FName PersonaId) const
+{
+    if (PersonaId.IsNone())
+    {
+        return nullptr;
+    }
+
+    // Check PersonaActorMap first (primary source of truth)
+    if (const TObjectPtr<AActor>* Found = PersonaActorMap.Find(PersonaId))
+    {
+        return Found->Get();
+    }
+
+    // Not found
+    return nullptr;
+}
+
+void UDialogueParticipants::SetActorForPersona(FName PersonaId, AActor* Actor)
+{
+    if (PersonaId.IsNone() || !Actor)
+    {
+        return;
+    }
+
+    PersonaActorMap.Add(PersonaId, Actor);
+
+    // Keep legacy NPC reference in sync (for backward compatibility)
+    // Assume first registered persona is the primary NPC
+    if (!NPC)
+    {
+        NPC = Actor;
+    }
+}
+
+TArray<FName> UDialogueParticipants::GetAllPersonaIds() const
+{
+    TArray<FName> PersonaIds;
+    PersonaActorMap.GetKeys(PersonaIds);
+    return PersonaIds;
 }

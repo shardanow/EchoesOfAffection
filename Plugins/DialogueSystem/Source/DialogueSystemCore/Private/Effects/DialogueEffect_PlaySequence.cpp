@@ -46,6 +46,9 @@ void UDialogueEffect_PlaySequence::Execute_Implementation(UDialogueSessionContex
 		return;
 	}
 
+	// NEW v1.17.1: Cache context for later use in OnSequenceFinished
+	CachedContext = Context;
+
 	if (!SequenceAsset.IsValid() && SequenceAsset.IsPending())
 	{
 		// Try to load synchronously if not loaded yet
@@ -187,13 +190,42 @@ void UDialogueEffect_PlaySequence::Execute_Implementation(UDialogueSessionContex
 
 void UDialogueEffect_PlaySequence::OnSequenceFinished()
 {
-	UE_LOG(LogDialogueSequence, Log, TEXT("Sequence finished"));
-	CleanupSequence();
+	UE_LOG(LogDialogueSequence, Warning, TEXT("=== OnSequenceFinished CALLED ==="));
+	
+	// NEW v1.17.1: Apply pending end positions from DialogueRunner
+	bool bAppliedEndPositions = false;
+	
+	if (CachedContext.IsValid())
+	{
+		UDialogueSessionContext* Context = CachedContext.Get();
+		UObject* OwningRunnerObj = Context->GetOwningRunner();
+		
+		if (UDialogueRunner* OwningRunner = Cast<UDialogueRunner>(OwningRunnerObj))
+		{
+			UE_LOG(LogDialogueSequence, Warning, TEXT("  Applying pending end positions after sequence finish..."));
+			OwningRunner->ApplyPendingEndPositions();
+			bAppliedEndPositions = true;
+		}
+		else
+		{
+			UE_LOG(LogDialogueSequence, Warning, TEXT("  No OwningRunner found - end positions not applied"));
+		}
+	}
+	else
+	{
+		UE_LOG(LogDialogueSequence, Warning, TEXT("  CachedContext invalid - end positions not applied"));
+	}
+
+	// Pass flag to CleanupSequence to prevent transform restoration if end positions were applied
+	CleanupSequence(bAppliedEndPositions);
+	
+	UE_LOG(LogDialogueSequence, Warning, TEXT("=== OnSequenceFinished COMPLETE ==="));
 }
 
-void UDialogueEffect_PlaySequence::CleanupSequence()
+void UDialogueEffect_PlaySequence::CleanupSequence(bool bSkipTransformRestore)
 {
-	UE_LOG(LogDialogueSequence, Log, TEXT("[CLEANUP] CleanupSequence called"));
+	UE_LOG(LogDialogueSequence, Log, TEXT("[CLEANUP] CleanupSequence called (bSkipTransformRestore=%s)"), 
+		bSkipTransformRestore ? TEXT("true") : TEXT("false"));
 	
 	// ? NEW v1.14: Use cached participants instead of gathering again
 	TArray<AActor*> Participants;
@@ -218,7 +250,8 @@ void UDialogueEffect_PlaySequence::CleanupSequence()
 	// (Skip - DialogueRunner already cleared ActiveSequenceEffect)
 
 	// Restore actor transforms if requested (для Possessables)
-	if (bRestoreActorTransforms)
+	// NEW v1.17.1: Skip restoration if end positions were applied
+	if (bRestoreActorTransforms && !bSkipTransformRestore)
 	{
 		UE_LOG(LogDialogueSequence, Log, TEXT("[CLEANUP] Restoring %d actor transforms"), OriginalActorTransforms.Num());
 		
@@ -278,6 +311,11 @@ void UDialogueEffect_PlaySequence::CleanupSequence()
 			}
 		}
 		OriginalActorTransforms.Empty();
+	}
+	else if (bSkipTransformRestore)
+	{
+		UE_LOG(LogDialogueSequence, Warning, TEXT("[CLEANUP] Skipping transform restoration - END positions were applied!"));
+		OriginalActorTransforms.Empty(); // Clear but don't restore
 	}
 
 	// ? REMOVED: Camera restore (already done in StopSequence)
@@ -339,7 +377,7 @@ void UDialogueEffect_PlaySequence::StopSequence()
 	}
 
 	// Then cleanup resources
-	CleanupSequence();
+	CleanupSequence(false); // Force cleanup without skipping restoration on manual stop
 	
 	UE_LOG(LogDialogueSequence, Warning, TEXT("[SEQUENCE STOP] Cleanup complete!"));
 	UE_LOG(LogDialogueSequence, Warning, TEXT("[SEQUENCE STOP] ============================================"));
@@ -348,6 +386,24 @@ void UDialogueEffect_PlaySequence::StopSequence()
 bool UDialogueEffect_PlaySequence::IsPlaying() const
 {
 	return SequencePlayer != nullptr && SequencePlayer->IsPlaying();
+}
+
+// NEW v1.16.8: Get loaded sequence asset
+ULevelSequence* UDialogueEffect_PlaySequence::GetSequence() const
+{
+	// Try to get loaded asset first
+	if (SequenceAsset.IsValid())
+	{
+		return SequenceAsset.Get();
+	}
+	
+	// If not loaded but path is valid, try to load synchronously
+	if (SequenceAsset.IsPending())
+	{
+		return SequenceAsset.LoadSynchronous();
+	}
+	
+	return nullptr;
 }
 
 FText UDialogueEffect_PlaySequence::GetDisplayText_Implementation() const

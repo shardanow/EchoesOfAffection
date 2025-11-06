@@ -108,6 +108,10 @@ protected:
     UPROPERTY(Transient)
     TObjectPtr<UDialogueEffect_PlaySequence> ActiveSequenceEffect;
 
+    /** NEW v1.17.0: Pending end positions to apply after sequence finishes */
+    UPROPERTY(Transient)
+    TMap<FName, FTransform> PendingEndPositions;
+
 public:
     //~ Begin Lifecycle
 
@@ -164,11 +168,8 @@ public:
     UFUNCTION(BlueprintPure, Category = "Dialogue|State")
     EDialogueState GetCurrentState() const;
 
-    /** NEW v1.3: Get state machine */
-    UFUNCTION(BlueprintPure, Category = "Dialogue|State")
- UDialogueStateMachine* GetStateMachine() const { return StateMachine; }
-
-    UFUNCTION(BlueprintPure, Category = "Dialogue|State")
+    /** NEW v1.15: Get loaded dialogue data */
+  UFUNCTION(BlueprintPure, Category = "Dialogue")
     UDialogueDataAsset* GetLoadedDialogue() const { return LoadedDialogue; }
 
     UFUNCTION(BlueprintCallable, Category = "Dialogue|State")
@@ -289,6 +290,26 @@ protected:
     /** NEW v1.13.2: Gather all sequence participants from all dialogue nodes */
     TArray<AActor*> GatherAllSequenceParticipants() const;
 
+    /** NEW v1.15: Execute node positioning for participants */
+  void ExecuteNodePositioning(UDialogueNode* Node);
+
+    /** NEW v1.16: Register all personas from dialogue data into Participants mapping */
+ void RegisterPersonasFromDialogueData(AActor* Player, AActor* PrimaryNPC, const TMap<FName, AActor*>& AdditionalNPCs);
+
+    /** NEW v1.16.2: Find actor in world by PersonaId (searches DialogueComponent with matching CharacterId) */
+    AActor* FindActorByPersonaId(UWorld* World, FName PersonaId);
+
+    /** NEW v1.16.8: Extract positioning data from sequence automatically */
+    void ExtractPositionsFromSequence(UDialogueNode* Node);
+
+    /** NEW v1.17.0: Extract and apply sequence positions to actors */
+    void ExtractAndApplySequencePositions(UDialogueNode* Node, bool bApplyStart, bool bApplyEnd);
+
+public:
+    /** NEW v1.17.0: Apply pending end positions (called after sequence finishes) */
+    void ApplyPendingEndPositions();
+
+protected:
     //~ End Internal Logic
 
     //~ Begin Command Helpers (v1.2)

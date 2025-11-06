@@ -8,10 +8,14 @@
 #include "Conditions/DialogueConditionEvaluator.h"
 #include "Effects/DialogueEffectExecutor.h"
 #include "Effects/DialogueEffect_PlaySequence.h" // NEW v1.13: For sequence cleanup
+#include "Effects/DialogueEffect_PositionParticipant.h" // NEW v1.15: For participant positioning
+#include "Positioning/SequencePositioningExtractor.h" // NEW v1.16.8: For automatic position extraction
 #include "Commands/DialogueCommandHistory.h"
 #include "Commands/DialogueCommands.h"
+#include "Interfaces/IDialogueParticipant.h" // NEW v1.16.2: For Execute_GetParticipantId
 #include "TimerManager.h"
 #include "Engine/World.h"
+#include "EngineUtils.h" // NEW v1.16.2: For TActorIterator
 
 // GameEventBus integration (optional)
 #if WITH_GAMEEVENTBUS
@@ -552,13 +556,26 @@ void UDialogueRunner::BuildNodeCache()
 void UDialogueRunner::ProcessNode(UDialogueNode* Node)
 {
   if (!Node || !CurrentContext)
-    {
+  {
   return;
   }
+    
+    // ===== NEW v1.16.9 FIX: Execute positioning logic (handles both manual & auto) =====
+    // Always call ExecuteNodePositioning - it checks bEnablePositioning internally
+    if (Node->Positioning.bPositionBeforeEffects)
+    {
+     ExecuteNodePositioning(Node);  // Handles manual OR auto-extraction
+    }
     
  // Apply node effects
     ApplyNodeEffects(Node);
     
+    // ===== NEW v1.16.9 FIX: Position AFTER effects if configured =====
+    if (!Node->Positioning.bPositionBeforeEffects)
+    {
+        ExecuteNodePositioning(Node);  // Handles manual OR auto-extraction
+ }
+ 
     // Handle special node types
     switch (Node->NodeType)
     {
@@ -611,18 +628,18 @@ void UDialogueRunner::ProcessNode(UDialogueNode* Node)
     
     // Broadcast node entered event
     OnNodeEntered.Broadcast(Node);
-    
+  
     // Check for choices
- TArray<UDialogueNode*> Choices = GetAvailableChoices();
+    TArray<UDialogueNode*> Choices = GetAvailableChoices();
     if (Choices.Num() > 0)
     {
-     OnChoicesReady.Broadcast(Choices);
+        OnChoicesReady.Broadcast(Choices);
     }
     else
- {
- // Setup auto-advance if no choices
-SetupAutoAdvance(Node);
-  }
+    {
+        // Setup auto-advance if no choices
+        SetupAutoAdvance(Node);
+    }
 }
 
 void UDialogueRunner::ApplyNodeEffects(UDialogueNode* Node)
@@ -1063,4 +1080,731 @@ void UDialogueRunner::EmitDialogueEndedEvent(FName DialogueId)
 	EventBus->EmitEvent(Payload, true);
 
 #endif // WITH_GAMEEVENTBUS
+}
+
+//==============================================================================
+// NEW v1.15: Participant Positioning System
+//==============================================================================
+
+void UDialogueRunner::ExtractAndApplySequencePositions(UDialogueNode* Node, bool bApplyStart, bool bApplyEnd)
+{
+	UE_LOG(LogDialogueRunner, Log, TEXT("=== ExtractAndApplySequencePositions START for node '%s' ==="), 
+		Node ? *Node->NodeId.ToString() : TEXT("NULL"));
+	UE_LOG(LogDialogueRunner, Log, TEXT("  bApplyStart=%s, bApplyEnd=%s"), 
+		bApplyStart ? TEXT("true") : TEXT("false"), 
+		bApplyEnd ? TEXT("true") : TEXT("false"));
+
+	if (!Node || !CurrentContext || !LoadedDialogue)
+	{
+		UE_LOG(LogDialogueRunner, Error, TEXT("ExtractAndApplySequencePositions: Invalid Node, Context, or Dialogue!"));
+		return;
+	}
+
+	// Find PlaySequence effect
+	UDialogueEffect_PlaySequence* SequenceEffect = nullptr;
+	for (UDialogueEffect* Effect : Node->Effects)
+	{
+		SequenceEffect = Cast<UDialogueEffect_PlaySequence>(Effect);
+		if (SequenceEffect)
+		{
+			UE_LOG(LogDialogueRunner, Log, TEXT("  Found PlaySequence effect"));
+			break;
+		}
+	}
+
+	if (!SequenceEffect)
+	{
+		UE_LOG(LogDialogueRunner, Warning, TEXT("ExtractAndApplySequencePositions: No PlaySequence effect in node '%s'"), 
+			*Node->NodeId.ToString());
+		return;
+	}
+
+	ULevelSequence* Sequence = SequenceEffect->GetSequence();
+	if (!Sequence)
+	{
+		UE_LOG(LogDialogueRunner, Warning, TEXT("ExtractAndApplySequencePositions: SequenceEffect has no Sequence!"));
+		return;
+	}
+
+	UE_LOG(LogDialogueRunner, Log, TEXT("  Sequence: '%s'"), *Sequence->GetName());
+
+	// Create extractor
+	FSequencePositioningExtractor Extractor(Sequence);
+	if (!Extractor.IsValid())
+	{
+		UE_LOG(LogDialogueRunner, Warning, TEXT("ExtractAndApplySequencePositions: Failed to create extractor"));
+		return;
+	}
+
+	// Extract positions
+	TMap<FName, FTransform> StartPositions;
+	TMap<FName, FTransform> EndPositions;
+
+	if (bApplyStart)
+	{
+		StartPositions = Extractor.GetStartPositions();
+		UE_LOG(LogDialogueRunner, Log, TEXT("  Extracted %d start positions"), StartPositions.Num());
+	}
+
+	if (bApplyEnd)
+	{
+		EndPositions = Extractor.GetEndPositions();
+		UE_LOG(LogDialogueRunner, Log, TEXT("  Extracted %d end positions"), EndPositions.Num());
+	}
+
+	if (StartPositions.Num() == 0 && EndPositions.Num() == 0)
+	{
+		UE_LOG(LogDialogueRunner, Warning, TEXT("ExtractAndApplySequencePositions: No positions extracted!"));
+		return;
+	}
+
+	// Get participants mapping
+	UDialogueParticipants* Participants = CurrentContext->GetParticipants();
+	if (!Participants)
+	{
+		UE_LOG(LogDialogueRunner, Error, TEXT("ExtractAndApplySequencePositions: No Participants component!"));
+		return;
+	}
+
+	// Ensure personas are registered
+	if (Participants->GetAllPersonaIds().Num() == 0)
+	{
+		AActor* Player = CurrentContext->GetPlayer();
+		AActor* PrimaryNPC = CurrentContext->GetNPC();
+		
+		// Auto-resolve Additional Personas from DialogueData
+		TMap<FName, AActor*> AdditionalNPCs;
+		if (LoadedDialogue && LoadedDialogue->AdditionalPersonas.Num() > 0)
+		{
+			UWorld* World = GetWorld();
+			if (World)
+			{
+				for (const auto& Pair : LoadedDialogue->AdditionalPersonas)
+				{
+					FName PersonaId = Pair.Value.PersonaId;
+					if (!PersonaId.IsNone())
+					{
+						AActor* FoundActor = FindActorByPersonaId(World, PersonaId);
+						if (FoundActor)
+						{
+							AdditionalNPCs.Add(PersonaId, FoundActor);
+						}
+					}
+				}
+			}
+		}
+
+		RegisterPersonasFromDialogueData(Player, PrimaryNPC, AdditionalNPCs);
+	}
+
+	// Get positioning mode from DialogueDataAsset (NEW: renamed field)
+	EDialoguePositioningMode PositioningMode = LoadedDialogue->SequencePositioningMode;
+
+	// Helper function to find PersonaId for sequence actor name
+	auto FindPersonaForSequenceActor = [&](const FName& SequenceActorName) -> FName
+	{
+		// 1. Try direct match (sequence actor name = PersonaId)
+		AActor* DirectActor = Participants->GetActorByPersonaId(SequenceActorName);
+		if (DirectActor)
+		{
+			return SequenceActorName;
+		}
+
+		// 2. Try finding by actor name contains PersonaId
+		TArray<FName> AllPersonaIds = Participants->GetAllPersonaIds();
+		for (const FName& PersonaId : AllPersonaIds)
+		{
+			AActor* Actor = Participants->GetActorByPersonaId(PersonaId);
+			if (Actor)
+			{
+				// Check if sequence actor name contains persona ID or actor name
+				FString SeqActorStr = SequenceActorName.ToString();
+				FString PersonaStr = PersonaId.ToString();
+				FString ActorNameStr = Actor->GetName();
+
+				if (SeqActorStr.Contains(PersonaStr, ESearchCase::IgnoreCase) ||
+					SeqActorStr.Contains(ActorNameStr, ESearchCase::IgnoreCase))
+				{
+					UE_LOG(LogDialogueRunner, Log, TEXT("    Mapped sequence actor '%s' to PersonaId '%s' (Actor: '%s')"),
+						*SequenceActorName.ToString(), *PersonaId.ToString(), *ActorNameStr);
+					return PersonaId;
+				}
+			}
+		}
+
+		// 3. Fallback: try finding actor in world with matching name
+		UWorld* World = GetWorld();
+		if (World)
+		{
+			FString SeqActorStr = SequenceActorName.ToString();
+			for (const FName& PersonaId : AllPersonaIds)
+			{
+				AActor* Actor = Participants->GetActorByPersonaId(PersonaId);
+				if (Actor && Actor->GetName().Contains(SeqActorStr, ESearchCase::IgnoreCase))
+				{
+					UE_LOG(LogDialogueRunner, Log, TEXT("    Mapped sequence actor '%s' to PersonaId '%s' via actor name"),
+						*SequenceActorName.ToString(), *PersonaId.ToString());
+					return PersonaId;
+				}
+			}
+		}
+
+		UE_LOG(LogDialogueRunner, Warning, TEXT("    Could not map sequence actor '%s' to any PersonaId"), *SequenceActorName.ToString());
+		return NAME_None;
+	};
+
+	// Helper function to create and execute positioning effect
+	auto ApplyPosition = [&](FName PersonaId, const FTransform& Transform, bool bIsStart)
+	{
+		if (PersonaId.IsNone())
+		{
+			return;
+		}
+
+		AActor* Actor = Participants->GetActorByPersonaId(PersonaId);
+		if (!Actor)
+		{
+			UE_LOG(LogDialogueRunner, Warning, TEXT("    No actor found for PersonaId '%s'"), *PersonaId.ToString());
+			return;
+		}
+
+		UE_LOG(LogDialogueRunner, Log, TEXT("  Positioning '%s' (PersonaId: '%s') to %s: Loc=%s, Rot=%s"), 
+			*Actor->GetName(), 
+			*PersonaId.ToString(),
+			bIsStart ? TEXT("START") : TEXT("END"),
+			*Transform.GetLocation().ToString(), 
+			*Transform.GetRotation().Rotator().ToString());
+
+		// Create positioning config
+		FDialogueParticipantPositioning Config;
+		Config.ParticipantId = PersonaId;
+		Config.LocationSource = EDialogueLocationSource::WorldCoordinates;
+		Config.TargetLocation = Transform.GetLocation();
+		Config.TargetRotation = Transform.GetRotation().Rotator();
+		Config.PositioningMode = PositioningMode;
+		Config.bWaitForCompletion = bIsStart ? false : true; // Don't wait for start, wait for end
+		Config.bApplyRotation = true;
+
+		// Additional settings based on mode
+		if (PositioningMode == EDialoguePositioningMode::ConditionalTeleport)
+		{
+			Config.TeleportDistanceThreshold = 1000.0f;
+		}
+		if (PositioningMode == EDialoguePositioningMode::AIMoveTo || 
+			PositioningMode == EDialoguePositioningMode::ConditionalTeleport)
+		{
+			Config.AcceptanceRadius = 50.0f;
+			Config.bUsePathfinding = true;
+		}
+
+		// Create effect using factory
+		UDialogueEffect_PositionParticipant* PositionEffect = 
+			UDialoguePositioningEffectFactory::CreateEffect(this, Config);
+
+		if (PositionEffect)
+		{
+			PositionEffect->Execute(CurrentContext);
+		}
+	};
+
+	// Apply start positions (before sequence plays)
+	if (bApplyStart && StartPositions.Num() > 0)
+	{
+		UE_LOG(LogDialogueRunner, Log, TEXT("  Applying %d start positions..."), StartPositions.Num());
+		
+		for (const auto& Pair : StartPositions)
+		{
+			FName SequenceActorName = Pair.Key;
+			FTransform Transform = Pair.Value;
+
+			FName PersonaId = FindPersonaForSequenceActor(SequenceActorName);
+			ApplyPosition(PersonaId, Transform, true);
+		}
+	}
+
+	// Apply end positions (after sequence finishes)
+	if (bApplyEnd && EndPositions.Num() > 0)
+	{
+		UE_LOG(LogDialogueRunner, Log, TEXT("  Storing %d end positions for application after sequence finishes..."), EndPositions.Num());
+		
+		// Clear previous pending positions
+		PendingEndPositions.Empty();
+
+		// Store end positions with mapped PersonaIds
+		for (const auto& Pair : EndPositions)
+		{
+			FName SequenceActorName = Pair.Key;
+			FTransform Transform = Pair.Value;
+
+			FName PersonaId = FindPersonaForSequenceActor(SequenceActorName);
+			if (!PersonaId.IsNone())
+			{
+				PendingEndPositions.Add(PersonaId, Transform);
+				UE_LOG(LogDialogueRunner, Log, TEXT("    Stored end position for PersonaId '%s': Loc=%s, Rot=%s"),
+					*PersonaId.ToString(),
+					*Transform.GetLocation().ToString(),
+					*Transform.GetRotation().Rotator().ToString());
+			}
+		}
+
+		UE_LOG(LogDialogueRunner, Log, TEXT("  Stored %d end positions, will be applied after sequence finishes"), PendingEndPositions.Num());
+	}
+
+	UE_LOG(LogDialogueRunner, Log, TEXT("=== ExtractAndApplySequencePositions END ==="));
+}
+
+void UDialogueRunner::ExtractPositionsFromSequence(UDialogueNode* Node)
+{
+	UE_LOG(LogDialogueRunner, Warning, TEXT("=== ExtractPositionsFromSequence CALLED for node '%s' ==="), 
+    Node ? *Node->NodeId.ToString() : TEXT("NULL"));
+  
+    if (!Node || !CurrentContext)
+    {
+        UE_LOG(LogDialogueRunner, Error, TEXT("ExtractPositionsFromSequence: Invalid Node or Context!"));
+        return;
+    }
+
+    UE_LOG(LogDialogueRunner, Warning, TEXT("ExtractPositionsFromSequence: Node->Effects.Num() = %d"), Node->Effects.Num());
+
+    // Find PlaySequence effect in node effects
+    UDialogueEffect_PlaySequence* SequenceEffect = nullptr;
+  for (int32 i = 0; i < Node->Effects.Num(); ++i)
+    {
+   UDialogueEffect* Effect = Node->Effects[i];
+        UE_LOG(LogDialogueRunner, Warning, TEXT("  Effect[%d]: %s"), i, Effect ? *Effect->GetClass()->GetName() : TEXT("NULL"));
+ 
+        SequenceEffect = Cast<UDialogueEffect_PlaySequence>(Effect);
+   if (SequenceEffect)
+        {
+    UE_LOG(LogDialogueRunner, Warning, TEXT("  ? Found PlaySequence effect at index %d!"), i);
+            break;
+        }
+    }
+
+    // No sequence - skip automatic extraction
+    if (!SequenceEffect)
+    {
+        UE_LOG(LogDialogueRunner, Warning, TEXT("ExtractPositionsFromSequence: No PlaySequence effect found in node '%s'"), 
+   *Node->NodeId.ToString());
+        return;
+    }
+
+    ULevelSequence* Sequence = SequenceEffect->GetSequence();
+    if (!Sequence)
+    {
+      UE_LOG(LogDialogueRunner, Warning, TEXT("ExtractPositionsFromSequence: SequenceEffect has no Sequence!"));
+     return;
+    }
+
+    UE_LOG(LogDialogueRunner, Warning, TEXT("ExtractPositionsFromSequence: Found sequence '%s'"), *Sequence->GetName());
+
+    // Create extractor
+    FSequencePositioningExtractor Extractor(Sequence);
+    if (!Extractor.IsValid())
+    {
+UE_LOG(LogDialogueRunner, Warning, TEXT("ExtractPositionsFromSequence: Failed to create extractor for sequence '%s'"), 
+      *Sequence->GetName());
+ return;
+    }
+
+ // Extract start/end positions
+    TMap<FName, FTransform> StartPositions = Extractor.GetStartPositions();
+    TMap<FName, FTransform> EndPositions = Extractor.GetEndPositions();
+
+    UE_LOG(LogDialogueRunner, Warning, TEXT("=== ExtractPositionsFromSequence: Extracted %d start positions, %d end positions from sequence '%s' ==="),
+        StartPositions.Num(), EndPositions.Num(), *Sequence->GetName());
+
+    // TODO v1.16.8: Apply extracted positions to Node->Positioning automatically
+    // For now, just log what we found
+
+    for (const auto& Pair : StartPositions)
+    {
+        UE_LOG(LogDialogueRunner, Warning, TEXT("  Start Position[%s]: Loc=%s, Rot=%s"),
+          *Pair.Key.ToString(),
+      *Pair.Value.GetLocation().ToString(),
+            *Pair.Value.GetRotation().Rotator().ToString());
+    }
+
+    for (const auto& Pair : EndPositions)
+    {
+        UE_LOG(LogDialogueRunner, Warning, TEXT("  End Position[%s]: Loc=%s, Rot=%s"),
+            *Pair.Key.ToString(),
+      *Pair.Value.GetLocation().ToString(),
+ *Pair.Value.GetRotation().Rotator().ToString());
+    }
+    
+    UE_LOG(LogDialogueRunner, Warning, TEXT("=== ExtractPositionsFromSequence COMPLETE ==="));
+}
+
+void UDialogueRunner::ExecuteNodePositioning(UDialogueNode* Node)
+{
+	if (!Node || !CurrentContext || !LoadedDialogue)
+	{
+		return;
+	}
+
+	const FDialogueNodePositioning& Positioning = Node->Positioning;
+
+	// NEW v1.17.0: Determine if we should apply sequence-based positioning
+	bool bShouldExtractFromSequence = false;
+	bool bApplyStart = false;
+	bool bApplyEnd = false;
+
+	// Check if sequence positioning is enabled (either globally or per-node override)
+	if (Positioning.bEnablePositioning && Positioning.bOverrideSequencePositioning)
+	{
+		// Per-node override takes precedence
+		bShouldExtractFromSequence = true;
+		bApplyStart = Positioning.bPositionAtSequenceStart;
+		bApplyEnd = Positioning.bPositionAtSequenceEnd;
+		UE_LOG(LogDialogueRunner, Log, TEXT("ExecuteNodePositioning: Using per-node sequence positioning (Start=%s, End=%s)"),
+			bApplyStart ? TEXT("true") : TEXT("false"),
+			bApplyEnd ? TEXT("true") : TEXT("false"));
+	}
+	else if (LoadedDialogue->bExtractPositionsFromSequence)
+	{
+		// Global setting from DialogueDataAsset
+		bShouldExtractFromSequence = true;
+		bApplyStart = LoadedDialogue->bPositionActorsAtSequenceStart;
+		bApplyEnd = LoadedDialogue->bPositionActorsAtSequenceEnd;
+		UE_LOG(LogDialogueRunner, Log, TEXT("ExecuteNodePositioning: Using global sequence positioning (Start=%s, End=%s)"),
+			bApplyStart ? TEXT("true") : TEXT("false"),
+			bApplyEnd ? TEXT("true") : TEXT("false"));
+	}
+
+	// Apply sequence-based positioning if enabled
+	if (bShouldExtractFromSequence && (bApplyStart || bApplyEnd))
+	{
+		ExtractAndApplySequencePositions(Node, bApplyStart, bApplyEnd);
+		
+		// If sequence positioning is active and no manual positioning configured, return early
+		if (!Positioning.bEnablePositioning || (Positioning.bEnablePositioning && Positioning.bOverrideSequencePositioning))
+		{
+			// Sequence positioning is handling everything, skip manual positioning
+			return;
+		}
+	}
+
+	// Manual positioning logic (v1.15 - v1.17)
+	// Only execute if manual positioning is explicitly enabled AND not overridden by sequence positioning
+	if (!Positioning.bEnablePositioning || Positioning.bOverrideSequencePositioning)
+	{
+		return; // No manual positioning configured
+	}
+
+	// NEW v1.16: Auto-register personas if not yet registered
+	if (CurrentContext->GetParticipants())
+	{
+		TArray<FName> ExistingPersonas = CurrentContext->GetParticipants()->GetAllPersonaIds();
+		if (ExistingPersonas.Num() == 0)
+		{
+			// No personas registered yet - register them now
+			AActor* Player = CurrentContext->GetPlayer();
+			AActor* PrimaryNPC = CurrentContext->GetNPC();
+			
+			// NEW v1.16.2: Auto-resolve Additional Personas from DialogueData
+			TMap<FName, AActor*> AdditionalNPCs;
+			if (LoadedDialogue && LoadedDialogue->AdditionalPersonas.Num() > 0)
+			{
+				UWorld* World = GetWorld();
+				if (World)
+				{
+					// Try to find actors for each Additional Persona in the world
+					for (const auto& Pair : LoadedDialogue->AdditionalPersonas)
+					{
+						FName PersonaId = Pair.Value.PersonaId;
+						if (!PersonaId.IsNone())
+						{
+							// Search for actor with matching CharacterId (DialogueComponent)
+							AActor* FoundActor = FindActorByPersonaId(World, PersonaId);
+							if (FoundActor)
+							{
+								AdditionalNPCs.Add(PersonaId, FoundActor);
+								UE_LOG(LogDialogueRunner, Log, TEXT("ExecuteNodePositioning: Auto-resolved Additional Persona '%s' -> '%s'"),
+									*PersonaId.ToString(), *FoundActor->GetName());
+							}
+							else
+							{
+								UE_LOG(LogDialogueRunner, Warning, TEXT("ExecuteNodePositioning: Could not find actor for Additional Persona '%s'"),
+									*PersonaId.ToString());
+							}
+						}
+					}
+				}
+			}
+
+			RegisterPersonasFromDialogueData(Player, PrimaryNPC, AdditionalNPCs);
+		}
+	}
+
+	UE_LOG(LogDialogueRunner, Log, TEXT("ExecuteNodePositioning: Processing manual positioning for node '%s'"), *Node->NodeId.ToString());
+
+	// Get primary persona ID from dialogue data
+	FName PrimaryPersonaId = LoadedDialogue->PrimaryPersona.PersonaId;
+
+	// Create positioning effects using factory
+	TArray<UDialogueEffect_PositionParticipant*> PositioningEffects = 
+		UDialoguePositioningEffectFactory::CreateEffectsForNode(
+			this,
+			Positioning,
+			PrimaryPersonaId
+		);
+
+	// Execute all positioning effects
+	for (UDialogueEffect_PositionParticipant* Effect : PositioningEffects)
+	{
+		if (Effect)
+		{
+			Effect->Execute(CurrentContext);
+		}
+	}
+
+	UE_LOG(LogDialogueRunner, Log, TEXT("ExecuteNodePositioning: Executed %d manual positioning effects"), PositioningEffects.Num());
+}
+
+//==============================================================================
+// NEW v1.16: Multi-NPC Dialogue Support - Persona Registration
+//==============================================================================
+
+void UDialogueRunner::RegisterPersonasFromDialogueData(
+	AActor* Player,
+	AActor* PrimaryNPC,
+	const TMap<FName, AActor*>& AdditionalNPCs)
+{
+	if (!CurrentContext || !LoadedDialogue)
+	{
+		return;
+	}
+
+	UDialogueParticipants* Participants = CurrentContext->GetParticipants();
+	if (!Participants)
+	{
+		UE_LOG(LogDialogueRunner, Error, TEXT("RegisterPersonasFromDialogueData: No Participants component"));
+		return;
+	}
+
+	// Register Primary Persona (NPC)
+	FName PrimaryPersonaId = LoadedDialogue->PrimaryPersona.PersonaId;
+	if (!PrimaryPersonaId.IsNone() && PrimaryNPC)
+	{
+		Participants->SetActorForPersona(PrimaryPersonaId, PrimaryNPC);
+		UE_LOG(LogDialogueRunner, Log, TEXT("RegisterPersonas: Primary Persona '%s' -> '%s'"), 
+			*PrimaryPersonaId.ToString(), *PrimaryNPC->GetName());
+	}
+
+	// Register Player
+	if (Player)
+	{
+		Participants->SetActorForPersona(FName("Player"), Player);
+		UE_LOG(LogDialogueRunner, Log, TEXT("RegisterPersonas: Player registered as 'Player'"));
+	}
+
+	// Register Additional NPCs
+	for (const auto& Pair : AdditionalNPCs)
+	{
+		FName PersonaId = Pair.Key;
+		AActor* Actor = Pair.Value;
+
+		if (!PersonaId.IsNone() && Actor)
+		{
+			Participants->SetActorForPersona(PersonaId, Actor);
+			UE_LOG(LogDialogueRunner, Log, TEXT("RegisterPersonas: Additional Persona '%s' -> '%s'"), 
+				*PersonaId.ToString(), *Actor->GetName());
+		}
+	}
+
+	// Log summary
+	TArray<FName> AllPersonaIds = Participants->GetAllPersonaIds();
+	FString PersonaList;
+	for (const FName& Id : AllPersonaIds)
+	{
+		if (!PersonaList.IsEmpty())
+		{
+			PersonaList += TEXT(", ");
+		}
+		PersonaList += Id.ToString();
+	}
+	UE_LOG(LogDialogueRunner, Log, TEXT("RegisterPersonas: Total %d personas registered: %s"), 
+		AllPersonaIds.Num(), *PersonaList);
+}
+
+//==============================================================================
+// NEW v1.16.2: Helper - Find Actor by PersonaId
+//==============================================================================
+
+AActor* UDialogueRunner::FindActorByPersonaId(UWorld* World, FName PersonaId)
+{
+	if (!World || PersonaId.IsNone())
+	{
+		return nullptr;
+	}
+
+	// 1. PRIORITY: Search for component implementing IDialogueParticipant with matching CharacterId
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		AActor* Actor = *It;
+		if (!Actor || Actor->IsPendingKillPending())
+		{
+			continue;
+		}
+
+		// Check all components for IDialogueParticipant interface
+		TArray<UActorComponent*> Components = Actor->GetComponentsByInterface(UDialogueParticipant::StaticClass());
+		for (UActorComponent* Component : Components)
+		{
+			if (Component && Component->GetClass()->ImplementsInterface(UDialogueParticipant::StaticClass()))
+			{
+				// Use IDialogueParticipant interface to get CharacterId
+				FName ActorCharacterId = IDialogueParticipant::Execute_GetParticipantId(Component);
+				if (ActorCharacterId == PersonaId)
+				{
+					UE_LOG(LogDialogueRunner, Log, TEXT("FindActorByPersonaId: Found actor '%s' via IDialogueParticipant.CharacterId '%s'"),
+						*Actor->GetName(), *PersonaId.ToString());
+					return Actor;
+				}
+			}
+		}
+	}
+
+	// 2. FALLBACK: Check actor tags
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		AActor* Actor = *It;
+		if (!Actor)
+		{
+			continue;
+		}
+
+		if (Actor->Tags.Contains(PersonaId))
+		{
+			UE_LOG(LogDialogueRunner, Log, TEXT("FindActorByPersonaId: Found actor '%s' by tag '%s'"),
+				*Actor->GetName(), *PersonaId.ToString());
+			return Actor;
+		}
+	}
+
+	// 3. LAST FALLBACK: Check if actor name contains PersonaId
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		AActor* Actor = *It;
+		if (!Actor)
+		{
+			continue;
+		}
+
+		FString ActorName = Actor->GetName();
+		FString PersonaIdStr = PersonaId.ToString();
+		if (ActorName.Contains(PersonaIdStr, ESearchCase::IgnoreCase))
+		{
+			UE_LOG(LogDialogueRunner, Log, TEXT("FindActorByPersonaId: Found actor '%s' by name match '%s'"),
+				*ActorName, *PersonaIdStr);
+			return Actor;
+		}
+	}
+
+	UE_LOG(LogDialogueRunner, Warning, TEXT("FindActorByPersonaId: Could not find actor for PersonaId '%s'. Solutions:"), *PersonaId.ToString());
+	UE_LOG(LogDialogueRunner, Warning, TEXT("  1. Add DialogueComponent to actor and set CharacterId = '%s'"), *PersonaId.ToString());
+	UE_LOG(LogDialogueRunner, Warning, TEXT("  2. Add Actor Tag '%s' in Details panel ? Tags"), *PersonaId.ToString());
+	UE_LOG(LogDialogueRunner, Warning, TEXT("  3. Ensure actor name contains '%s'"), *PersonaId.ToString());
+	return nullptr;
+}
+
+//==============================================================================
+// NEW v1.17.0: Apply Pending End Positions
+//==============================================================================
+
+void UDialogueRunner::ApplyPendingEndPositions()
+{
+	UE_LOG(LogDialogueRunner, Warning, TEXT("=== ApplyPendingEndPositions CALLED ==="));
+	UE_LOG(LogDialogueRunner, Warning, TEXT("  PendingEndPositions.Num() = %d"), PendingEndPositions.Num());
+
+	if (PendingEndPositions.Num() == 0)
+	{
+		UE_LOG(LogDialogueRunner, Log, TEXT("ApplyPendingEndPositions: No pending end positions to apply"));
+		return;
+	}
+
+	if (!CurrentContext || !LoadedDialogue)
+	{
+		UE_LOG(LogDialogueRunner, Error, TEXT("ApplyPendingEndPositions: Invalid context or dialogue!"));
+		return;
+	}
+
+	UDialogueParticipants* Participants = CurrentContext->GetParticipants();
+	if (!Participants)
+	{
+		UE_LOG(LogDialogueRunner, Error, TEXT("ApplyPendingEndPositions: No Participants component!"));
+		return;
+	}
+
+	EDialoguePositioningMode PositioningMode = LoadedDialogue->SequencePositioningMode;
+
+	UE_LOG(LogDialogueRunner, Warning, TEXT("ApplyPendingEndPositions: Applying %d END positions with mode '%s'..."), 
+		PendingEndPositions.Num(),
+		*UEnum::GetValueAsString(PositioningMode));
+
+	int32 AppliedCount = 0;
+
+	for (const auto& Pair : PendingEndPositions)
+	{
+		FName PersonaId = Pair.Key;
+		FTransform Transform = Pair.Value;
+
+		AActor* Actor = Participants->GetActorByPersonaId(PersonaId);
+		if (!Actor)
+		{
+			UE_LOG(LogDialogueRunner, Warning, TEXT("  [SKIP] No actor found for PersonaId '%s'"), *PersonaId.ToString());
+			continue;
+		}
+
+		UE_LOG(LogDialogueRunner, Warning, TEXT("  [APPLYING] '%s' (PersonaId: '%s')"), 
+			*Actor->GetName(), 
+			*PersonaId.ToString());
+		UE_LOG(LogDialogueRunner, Warning, TEXT("    Current Location: %s"), *Actor->GetActorLocation().ToString());
+		UE_LOG(LogDialogueRunner, Warning, TEXT("    Target Location:  %s"), *Transform.GetLocation().ToString());
+		UE_LOG(LogDialogueRunner, Warning, TEXT("    Target Rotation:  %s"), *Transform.GetRotation().Rotator().ToString());
+
+		// Create positioning config
+		FDialogueParticipantPositioning Config;
+		Config.ParticipantId = PersonaId;
+		Config.LocationSource = EDialogueLocationSource::WorldCoordinates;
+		Config.TargetLocation = Transform.GetLocation();
+		Config.TargetRotation = Transform.GetRotation().Rotator();
+		Config.PositioningMode = PositioningMode;
+		Config.bWaitForCompletion = true; // Wait for end positioning
+		Config.bApplyRotation = true;
+
+		// Additional settings based on mode
+		if (PositioningMode == EDialoguePositioningMode::ConditionalTeleport)
+		{
+			Config.TeleportDistanceThreshold = 1000.0f;
+		}
+		if (PositioningMode == EDialoguePositioningMode::AIMoveTo || 
+			PositioningMode == EDialoguePositioningMode::ConditionalTeleport)
+		{
+			Config.AcceptanceRadius = 50.0f;
+			Config.bUsePathfinding = true;
+		}
+
+		// Create effect using factory
+		UDialogueEffect_PositionParticipant* PositionEffect = 
+			UDialoguePositioningEffectFactory::CreateEffect(this, Config);
+
+		if (PositionEffect)
+		{
+			PositionEffect->Execute(CurrentContext);
+			AppliedCount++;
+			UE_LOG(LogDialogueRunner, Warning, TEXT("    [SUCCESS] Effect executed"));
+		}
+		else
+		{
+			UE_LOG(LogDialogueRunner, Error, TEXT("    [FAILED] Could not create positioning effect"));
+		}
+	}
+
+	// Clear pending positions after application
+	PendingEndPositions.Empty();
+
+	UE_LOG(LogDialogueRunner, Warning, TEXT("=== ApplyPendingEndPositions COMPLETE: Applied %d/%d positions ==="), 
+		AppliedCount, PendingEndPositions.Num());
 }

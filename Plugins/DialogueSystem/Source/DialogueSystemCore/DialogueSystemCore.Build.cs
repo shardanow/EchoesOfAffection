@@ -36,7 +36,11 @@ public class DialogueSystemCore : ModuleRules
 			new string[]
 			{
 				"LevelSequence",     // For Level Sequence support
-				"MovieScene"         // For sequence playback
+				"MovieScene",        // For sequence playback
+				"MovieSceneTracks",  // NEW v1.16.8: For UMovieScene3DTransformTrack
+				"AIModule",          // For AI movement in positioning
+				"NavigationSystem",  // For pathfinding
+				"Niagara"         // For VFX effects
 			}
 		);
 		

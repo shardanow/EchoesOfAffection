@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
 #include "DialogueConnection.h"
+#include "Data/DialoguePositioningTypes.h"
 #include "DialogueNode.generated.h"
 
 // Forward declarations
@@ -212,6 +213,10 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue")
     TArray<FDialogueConnection> Connections;
+
+    /** v1.15: Participant positioning configuration for this node */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue|Positioning", meta = (ShowOnlyInnerProperties))
+    FDialogueNodePositioning Positioning;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")
     bool bVisitedThisSession;

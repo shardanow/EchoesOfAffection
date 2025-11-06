@@ -78,6 +78,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Effect")
 	bool IsPlaying() const;
 
+	/** NEW v1.16.8: Get loaded sequence asset */
+	UFUNCTION(BlueprintPure, Category = "Effect")
+	ULevelSequence* GetSequence() const;
+
 	/** NEW v1.13.2: Gather Possessable actors from this sequence */
 	TArray<AActor*> GatherSequenceParticipants() const;
 
@@ -98,12 +102,16 @@ protected:
 	UPROPERTY(Transient)
 	TArray<TWeakObjectPtr<AActor>> CachedParticipants;
 
+	/** NEW v1.17.1: Cached context reference (for ApplyPendingEndPositions) */
+	UPROPERTY(Transient)
+	TWeakObjectPtr<UDialogueSessionContext> CachedContext;
+
 	/** Handle sequence finished */
 	UFUNCTION()
 	void OnSequenceFinished();
 
 	/** Internal cleanup logic */
-	void CleanupSequence();
+	void CleanupSequence(bool bSkipTransformRestore = false);
 
 	/** NEW v1.13.3: Emit GameEventBus event when sequence starts */
 	void EmitSequenceStartedEvent(const TArray<AActor*>& Participants, class UDialogueSessionContext* Context);
