@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Components/DialoguePresentationComponent.h"
 #include "Components/DialogueComponent.h"
@@ -326,13 +326,13 @@ void UDialoguePresentationComponent::OnDialogueStarted(UDialogueRunner* Runner)
 	// Try to get target NPC from dialogue runner's context
 	AActor* TargetNPC = nullptr;
 	
-	// Определяем направление камеры
+
 	UDialogueSessionContext* Context = Runner->GetContext();
 	if (Context)
 	{
 		AActor* Owner = GetOwner();
 		
-		// Определяем, кто говорит
+
 		if (Owner == Context->GetPlayer())
 		{
 			TargetNPC = Context->GetNPC();
@@ -343,7 +343,7 @@ void UDialoguePresentationComponent::OnDialogueStarted(UDialogueRunner* Runner)
 		}
 	}
 		
-	// Если определили цель, настраиваем камеру
+
 	if (TargetNPC && CameraComponent)
 	{
 		FDialogueCameraSettings DefaultSettings;

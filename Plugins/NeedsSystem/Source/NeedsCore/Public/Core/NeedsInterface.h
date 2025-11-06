@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,7 +9,7 @@
 
 // ========================================
 // MANAGER INTERFACE
-// Центральный интерфейс для управления системой потребностей (реализуется Subsystem)
+
 // ========================================
 
 UINTERFACE(MinimalAPI, Blueprintable)
@@ -27,7 +27,7 @@ class NEEDSCORE_API INeedsManager
 	GENERATED_BODY()
 
 public:
-	/** Get current game time in hours (для интеграции с Time System через события) */
+	/** Get current game time in hours () */
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Needs Manager")
 	float GetCurrentGameTimeHours() const;
 
@@ -46,7 +46,7 @@ public:
 
 // ========================================
 // LISTENER INTERFACE
-// Интерфейс для объектов, которые хотят слушать события потребностей
+
 // ========================================
 
 UINTERFACE(MinimalAPI, Blueprintable)
@@ -95,7 +95,7 @@ public:
 
 // ========================================
 // NEEDS ACCESSOR INTERFACE
-// Интерфейс для доступа к потребностям (реализуется Component)
+
 // ========================================
 
 UINTERFACE(MinimalAPI, Blueprintable)
@@ -148,7 +148,7 @@ public:
 
 // ========================================
 // NEEDS MUTATOR INTERFACE
-// Интерфейс для изменения потребностей (реализуется Component)
+
 // ========================================
 
 UINTERFACE(MinimalAPI, Blueprintable)

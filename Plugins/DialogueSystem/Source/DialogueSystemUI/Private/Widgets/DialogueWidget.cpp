@@ -261,7 +261,7 @@ void UDialogueWidget::HandleNodeEntered(UDialogueNode* Node)
 
     CurrentNode = Node;
     // DON'T reset bWaitingForInput here - it will be set correctly later
-    // bWaitingForInput = false;  ← REMOVED! This was causing the bug!
+    // bWaitingForInput = false;  <- REMOVED! This was causing the bug!
 
     // Clear previous choices
     ClearChoiceButtons();
@@ -354,7 +354,7 @@ UE_LOG(LogTemp, Log, TEXT("DialogueWidget::HandleChoicesReady - START: bWaitingF
     SetWaitingForInput(true, TEXT("HandleChoicesReady - choices available"));
 UE_LOG(LogTemp, Log, TEXT("DialogueWidget::HandleChoicesReady - AFTER SET: bWaitingForInput=%d"), bWaitingForInput);
     
-    bIsShowingChoices = true; // ⚠️ Set flag to prevent clearing
+    bIsShowingChoices = true; // WARN: Set flag to prevent clearing
 
     const UDialogueSessionContext* Context = CurrentRunner->GetContext();
     CreateChoiceButtons(Choices, Context);

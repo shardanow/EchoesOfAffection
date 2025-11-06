@@ -6,8 +6,11 @@
 #include "Core/DialogueContext.h"
 #include "SaveGame/DialogueSaveData.h"
 #include "Pool/DialogueObjectPool.h"
+#include "Components/DialogueComponent.h" // For ResolvePersonaToActor
+#include "Interfaces/IDialogueParticipant.h" // For GetParticipantId
 #include "Engine/AssetManager.h"
 #include "Engine/StreamableManager.h"
+#include "EngineUtils.h" // For TActorIterator
 #include "Kismet/GameplayStatics.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
@@ -135,13 +138,13 @@ UDialogueRunner* UDialogueSubsystem::StartDialogue_Implementation(UDialogueDataA
     // ?? NEW: Broadcast BEFORE starting dialogue so UI can bind
     OnDialogueAboutToStart.Broadcast(ActiveDialogue, Player, NPC);
 
-    // Prepare participants array
- TArray<UObject*> Participants;
- Participants.Add(Player);
+    // Prepare participants array (Player and NPC ONLY - no AdditionalPersonas!)
+TArray<UObject*> Participants;
+    Participants.Add(Player);
     Participants.Add(NPC);
     
-    // Start dialogue
- ActiveDialogue->StartDialogue(DialogueAsset, Participants);
+    // Start dialogue with base participants only
+    ActiveDialogue->StartDialogue(DialogueAsset, Participants);
     
     // Add to history
     DialogueHistory.Add(DialogueAsset->DialogueId);
@@ -938,6 +941,46 @@ void UDialogueSubsystem::TrimRunnerPool()
         RunnerPool->Trim();
         UE_LOG(LogDialogueSubsystem, Log, TEXT("Trimmed runner pool"));
     }
+}
+
+AActor* UDialogueSubsystem::ResolvePersonaToActor(FName PersonaId, UWorld* WorldContext)
+{
+    if (PersonaId.IsNone() || !WorldContext)
+    {
+  return nullptr;
+    }
+
+    UE_LOG(LogDialogueSubsystem, Verbose, TEXT("?? ResolvePersonaToActor: Searching for PersonaId='%s'"), *PersonaId.ToString());
+
+    // Iterate through all actors with DialogueComponent
+    for (TActorIterator<AActor> It(WorldContext); It; ++It)
+    {
+        AActor* Actor = *It;
+   if (!Actor || Actor->IsPendingKillPending())
+        {
+        continue;
+      }
+
+        // Check if actor has DialogueComponent
+        UDialogueComponent* DialogueComp = Actor->FindComponentByClass<UDialogueComponent>();
+        if (!DialogueComp)
+        {
+ continue;
+      }
+
+        // Compare CharacterId with PersonaId using IDialogueParticipant interface
+        FName ActorPersonaId = IDialogueParticipant::Execute_GetParticipantId(DialogueComp);
+        if (ActorPersonaId == PersonaId)
+        {
+   UE_LOG(LogDialogueSubsystem, Log, TEXT("? Resolved PersonaId='%s' ? Actor='%s'"), 
+        *PersonaId.ToString(), *Actor->GetName());
+    return Actor;
+  }
+  }
+
+    UE_LOG(LogDialogueSubsystem, Warning, TEXT("? ResolvePersonaToActor: No actor found for PersonaId='%s'"), 
+     *PersonaId.ToString());
+    return nullptr;
 }
 
 FName UDialogueSubsystem::ExtractNpcId(AActor* NPC)

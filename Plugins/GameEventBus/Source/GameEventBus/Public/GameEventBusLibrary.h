@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,9 +10,9 @@
 #include "GameEventBusLibrary.generated.h"
 
 /**
- * Blueprint Function Library для удобной работы с Game Event Bus
+ * Blueprint Function Library 
  * 
- * Упрощает создание и эмиссию событий из Blueprint
+ * 
  */
 UCLASS()
 class GAMEEVENTBUS_API UGameEventBusLibrary : public UBlueprintFunctionLibrary
@@ -34,7 +34,7 @@ public:
 
 	/**
 	 * Emit event with string parameter
-	 * Удобно для ItemId, NpcId, QuestId и т.д.
+	 * , NpcId, QuestId 
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Game Events", meta = (WorldContext = "WorldContextObject"))
 	static void EmitEventWithString(
@@ -46,7 +46,7 @@ public:
 
 	/**
 	 * Emit event with int parameter
-	 * Удобно для Count, Amount и т.д.
+	 * , Amount 
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Game Events", meta = (WorldContext = "WorldContextObject"))
 	static void EmitEventWithInt(
@@ -58,7 +58,7 @@ public:
 
 	/**
 	 * Emit event with actors
-	 * Удобно для Instigator/Target пар
+	 * 
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Game Events", meta = (WorldContext = "WorldContextObject"))
 	static void EmitEventWithActors(
@@ -71,7 +71,7 @@ public:
 
 	/**
 	 * Emit item-related event
-	 * Shortcut для событий с предметами
+	 * Shortcut 
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Game Events|Items", meta = (WorldContext = "WorldContextObject"))
 	static void EmitItemEvent(

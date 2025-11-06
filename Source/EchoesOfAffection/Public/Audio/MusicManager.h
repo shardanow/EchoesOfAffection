@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -62,11 +62,11 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Music")
     void RequestMusicChange(USoundBase* NewMusic, int32 Priority, EMusicTransitionType TransitionType = EMusicTransitionType::Crossfade, float CrossfadeDuration = 2.0f, float VolumeMultiplier = 1.0f);
 
-    // ? НОВАЯ функция: регистрация зоны с уникальным ID
+
     UFUNCTION(BlueprintCallable, Category = "Music")
     int32 RegisterMusicZone(USoundBase* NewMusic, int32 Priority, EMusicTransitionType TransitionType = EMusicTransitionType::Crossfade, float CrossfadeDuration = 2.0f, float VolumeMultiplier = 1.0f);
 
-    // ? ИЗМЕНЕНО: Release по уникальному ID, а не по Priority
+
     UFUNCTION(BlueprintCallable, Category = "Music")
     void ReleaseZone(int32 ZoneID);
 
@@ -104,11 +104,11 @@ protected:
     UPROPERTY()
     USoundBase* CurrentMusic;
 
-    // ? ИЗМЕНЕНО: TMap<UniqueID, FMusicRequest> вместо TMap<Priority, FMusicRequest>
+
     UPROPERTY()
     TMap<int32, FMusicRequest> ActiveZones;
 
-    // ? НОВОЕ: Счётчик для генерации уникальных ID
+
     int32 NextZoneID = 0;
 
     UPROPERTY()

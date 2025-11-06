@@ -11,27 +11,27 @@
 class UDialogueSessionContext;
 
 /**
- * Данные персоны (личности) NPC
- * Используется для модификации стилей общения и AI промптов
+ * NPC Persona data (character personality)
+ * Used for AI generation and character behavior
  */
 USTRUCT(BlueprintType)
 struct DIALOGUESYSTEMCORE_API FDialoguePersonaData
 {
     GENERATED_BODY()
 
-    /** ID персоны */
+    /** Persona ID */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Persona")
-    FName PersonaId;
+FName PersonaId;
 
-    /** Отображаемое имя */
+    /** Display name */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Persona")
     FText DisplayName;
 
-    /** Краткое описание личности */
+    /** Short character description */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Persona", meta = (MultiLine = true))
     FText Description;
 
-    /** Основные черты характера (теги) */
+    /** Personality trait tags */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Persona")
     FGameplayTagContainer PersonalityTraits; // Trait.Shy, Trait.Confident, etc
 
@@ -39,27 +39,27 @@ struct DIALOGUESYSTEMCORE_API FDialoguePersonaData
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI", meta = (MultiLine = true))
     FString AISystemPrompt;
 
-    /** Примеры реплик для Few-Shot Learning */
+    /** Example phrases for Few-Shot Learning */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI")
     TArray<FString> ExamplePhrases;
 
-    /** Модификаторы отношений */
+    /** Relationship sensitivity */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relationship")
     float PositiveSensitivity = 1.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relationship")
     float NegativeSensitivity = 1.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relationship")
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relationship")
     float ForgivenessRate = 1.0f;
 };
 
 /**
- * Главный Asset диалога
- * Содержит весь граф узлов, рёбер и метаданные
+ * Dialogue Data Asset
+ * Contains all nodes, edges and metadata for a dialogue
  * 
- * Data-driven подход: всё редактируется в DataTable или Editor,
- * а runtime только читает и выполняет
+ * Data-driven approach: designed for DataTable or Editor use,
+ * runtime creates instances with state
  */
 UCLASS(BlueprintType)
 class DIALOGUESYSTEMCORE_API UDialogueDataAsset : public UPrimaryDataAsset
@@ -69,27 +69,27 @@ class DIALOGUESYSTEMCORE_API UDialogueDataAsset : public UPrimaryDataAsset
 public:
     //~ Begin Metadata
 
-    /** Уникальный ID диалога */
+    /** Unique dialogue ID */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Metadata")
     FName DialogueId;
 
-    /** Отображаемое название (для редактора) */
+    /** Display name (for navigation) */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Metadata")
     FText DisplayName;
 
-    /** Описание диалога */
+    /** Dialogue description */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Metadata", meta = (MultiLine = true))
     FText Description;
 
-    /** Теги для фильтрации/поиска */
+    /** Tags for filtering/searching */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Metadata")
     FGameplayTagContainer DialogueTags;
 
-    /** Минимальный уровень отношений для доступа */
+  /** Minimum affinity required to start */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Metadata")
     float MinAffinityRequired = -100.0f;
 
-    /** Версия диалога (для миграции) */
+    /** Data version (for migration) */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Metadata")
     int32 Version = 1;
 
@@ -97,11 +97,11 @@ public:
 
     //~ Begin Graph Data
 
-    /** Все узлы диалога */
-    UPROPERTY(EditAnywhere, Instanced, BlueprintReadOnly, Category = "Graph")
+    /** All dialogue nodes */
+UPROPERTY(EditAnywhere, Instanced, BlueprintReadOnly, Category = "Graph")
     TArray<TObjectPtr<UDialogueNode>> Nodes;
 
-    /** ID стартового узла (по умолчанию) */
+  /** Starting node ID (default) */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Graph")
     FName StartNode;
 
@@ -109,11 +109,11 @@ public:
 
     //~ Begin Persona Data
 
-    /** Данные персоны главного участника */
+    /** Primary speaker persona data */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Persona")
     FDialoguePersonaData PrimaryPersona;
 
-    /** Дополнительные персоны (для групповых диалогов) */
+    /** Additional personas (for multi-NPC dialogues) */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Persona")
     TMap<FName, FDialoguePersonaData> AdditionalPersonas;
 
@@ -121,27 +121,27 @@ public:
 
     //~ Begin Localization
 
-    /** Namespace для локализации */
+/** Namespace for localization */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Localization")
     FString LocalizationNamespace;
 
-    /** Поддерживаемые языки */
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Localization")
+    /** Supported cultures */
+ UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Localization")
     TArray<FString> SupportedCultures;
 
-    //~ End Localization
+  //~ End Localization
 
     //~ Begin AI Integration
 
-    /** Разрешить AI генерацию для этого диалога */
+    /** Allow AI generation for new nodes */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI")
     bool bAllowAIGeneration = false;
 
-    /** Температура для AI (креативность) */
+    /** Temperature for AI (creativity) */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI", meta = (ClampMin = "0.0", ClampMax = "2.0"))
     float AITemperature = 0.7f;
 
-    /** Max токенов для ответа */
+    /** Max tokens for response */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI")
     int32 AIMaxTokens = 150;
 
@@ -150,27 +150,27 @@ public:
 public:
     //~ Begin API
 
-    /** Найти узел по ID */
+ /** Find node by ID */
     UFUNCTION(BlueprintCallable, Category = "Dialogue|Data")
     UDialogueNode* FindNode(FName NodeId) const;
 
-    /** Получить исходящие рёбра узла */
-    UFUNCTION(BlueprintCallable, Category = "Dialogue|Data")
+    /** Get outgoing edges from node */
+UFUNCTION(BlueprintCallable, Category = "Dialogue|Data")
     TArray<FDialogueEdgeData> GetOutgoingEdges(FName FromNodeId) const;
 
-    /** Получить стартовый узел с учётом контекста */
-    UFUNCTION(BlueprintCallable, Category = "Dialogue|Data")
+    /** Get starting node for given context */
+ UFUNCTION(BlueprintCallable, Category = "Dialogue|Data")
     FName GetStartNode(const UDialogueSessionContext* Context) const;
 
-    /** Валидация графа (для редактора) */
+    /** Validate graph (for debugging) */
     UFUNCTION(BlueprintCallable, Category = "Dialogue|Data")
     bool ValidateGraph(TArray<FString>& OutErrors) const;
 
-    /** Экспорт в JSON */
+    /** Export to JSON */
     UFUNCTION(BlueprintCallable, Category = "Dialogue|Data")
     FString ExportToJson() const;
 
-    /** Импорт из JSON */
+    /** Import from JSON */
     UFUNCTION(BlueprintCallable, Category = "Dialogue|Data")
     bool ImportFromJson(const FString& Json);
 
@@ -180,14 +180,14 @@ protected:
     //~ Begin UObject Interface
     virtual void PostLoad() override;
 #if WITH_EDITOR
-    virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
-    //~ End UObject Interface
+ //~ End UObject Interface
 
-    /** Построить индекс для быстрого поиска */
+  /** Rebuild search index */
     void RebuildIndex();
 
-    /** Индекс узлов */
+    /** Node lookup cache */
     UPROPERTY(Transient)
     TMap<FName, int32> NodeIndex;
 };

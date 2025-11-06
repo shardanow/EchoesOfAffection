@@ -108,6 +108,18 @@ FScheduleActionHandle UScheduleAction_MoveToLocation::ExecuteActionInternal_Impl
 	FVector TargetPos = TargetLocation.Location;
 	AActor* TargetActor = TargetLocation.ReferenceActor.Get();
 
+	// ? FIX: Save target BEFORE starting movement (for pause/resume)
+	PausedTargetLocations.Add(Handle.HandleID, TargetPos);
+	if (TargetActor)
+	{
+		PausedTargetActors.Add(Handle.HandleID, TargetActor);
+		UE_LOG(LogTemp, Log, TEXT("MoveToLocation: Saved target ACTOR for pause/resume: %s"), *TargetActor->GetName());
+	}
+	else
+	{
+		UE_LOG(LogTemp, Log, TEXT("MoveToLocation: Saved target LOCATION for pause/resume: %s"), *TargetPos.ToString());
+	}
+
 	EPathFollowingRequestResult::Type Result = EPathFollowingRequestResult::Failed;
 	
 	// Use FAIMoveRequest for more control
@@ -159,6 +171,10 @@ FScheduleActionHandle UScheduleAction_MoveToLocation::ExecuteActionInternal_Impl
 		UE_LOG(LogTemp, Error, TEXT("   Result code: %d"), (int32)Result);
 		UE_LOG(LogTemp, Error, TEXT("   Check: 1) NavMesh exists (press P), 2) Target is on NavMesh, 3) Path is reachable"));
 		
+		// Cleanup saved data on failure
+		PausedTargetLocations.Remove(Handle.HandleID);
+		PausedTargetActors.Remove(Handle.HandleID);
+		
 		// Return invalid handle since movement failed
 		return FScheduleActionHandle();
 	}
@@ -185,6 +201,166 @@ void UScheduleAction_MoveToLocation::CancelActionInternal_Implementation(FSchedu
 		}
 
 		ActiveMovements.Remove(ActionHandle.HandleID);
+		
+		// ? Cleanup saved pause data
+		PausedTargetLocations.Remove(ActionHandle.HandleID);
+		PausedTargetActors.Remove(ActionHandle.HandleID);
+	}
+}
+
+void UScheduleAction_MoveToLocation::PauseActionInternal_Implementation(FScheduleActionHandle ActionHandle)
+{
+	UE_LOG(LogTemp, Warning, TEXT("[MOVE] PauseAction called for handle: %s"), *ActionHandle.HandleID.ToString());
+
+	if (TWeakObjectPtr<AAIController>* ControllerPtr = ActiveMovements.Find(ActionHandle.HandleID))
+	{
+		if (AAIController* Controller = ControllerPtr->Get())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[MOVE]   Pausing AI movement for: %s"), 
+				Controller->GetPawn() ? *Controller->GetPawn()->GetName() : TEXT("NULL"));
+
+			// ? FIX: Target is already saved in ExecuteActionInternal, just verify it exists
+			FVector* SavedLocation = PausedTargetLocations.Find(ActionHandle.HandleID);
+			TWeakObjectPtr<AActor>* SavedActor = PausedTargetActors.Find(ActionHandle.HandleID);
+			
+			if (SavedLocation || SavedActor)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[MOVE]   Using saved target: %s (Actor: %s)"),
+					SavedLocation ? *SavedLocation->ToString() : TEXT("None"),
+					(SavedActor && SavedActor->IsValid()) ? *SavedActor->Get()->GetName() : TEXT("None"));
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("[MOVE]   ERROR: No saved target found! Movement may not resume correctly."));
+			}
+
+			// Stop AI movement
+			Controller->StopMovement();
+			
+			// Also stop physical movement
+			if (APawn* Pawn = Controller->GetPawn())
+			{
+				if (ACharacter* Character = Cast<ACharacter>(Pawn))
+				{
+					if (UCharacterMovementComponent* Movement = Character->GetCharacterMovement())
+					{
+						Movement->StopMovementImmediately();
+						UE_LOG(LogTemp, Warning, TEXT("[MOVE] Stopped CharacterMovementComponent"));
+					}
+				}
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[MOVE]   Controller is NULL!"));
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[MOVE]   Handle not found in ActiveMovements!"));
+	}
+}
+
+void UScheduleAction_MoveToLocation::ResumeActionInternal_Implementation(FScheduleActionHandle ActionHandle)
+{
+	UE_LOG(LogTemp, Warning, TEXT("[MOVE] ResumeAction called for handle: %s"), *ActionHandle.HandleID.ToString());
+
+	if (TWeakObjectPtr<AAIController>* ControllerPtr = ActiveMovements.Find(ActionHandle.HandleID))
+	{
+		if (AAIController* Controller = ControllerPtr->Get())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[MOVE]   Resuming AI movement for: %s"), 
+				Controller->GetPawn() ? *Controller->GetPawn()->GetName() : TEXT("NULL"));
+
+			// ? RESTORE target from saved data
+			FVector* SavedLocationPtr = PausedTargetLocations.Find(ActionHandle.HandleID);
+			TWeakObjectPtr<AActor>* SavedActorPtr = PausedTargetActors.Find(ActionHandle.HandleID);
+
+			AActor* TargetActor = SavedActorPtr ? SavedActorPtr->Get() : nullptr;
+			FVector TargetLocation;
+
+			// ? FIX: If target is an actor, use CURRENT actor position!
+			if (TargetActor)
+			{
+				TargetLocation = TargetActor->GetActorLocation();
+				UE_LOG(LogTemp, Warning, TEXT("[MOVE]   Restored target ACTOR: %s at position: %s"), 
+					*TargetActor->GetName(),
+					*TargetLocation.ToString());
+			}
+			else if (SavedLocationPtr)
+			{
+				TargetLocation = *SavedLocationPtr;
+				UE_LOG(LogTemp, Warning, TEXT("[MOVE]   Restored target LOCATION: %s"), 
+					*TargetLocation.ToString());
+
+				// ? SAFETY CHECK: Don't try to move to (0,0,0)
+				if (TargetLocation.IsNearlyZero())
+				{
+					UE_LOG(LogTemp, Error, TEXT("[MOVE]   ERROR: Cannot resume movement to (0,0,0)!"));
+					UE_LOG(LogTemp, Error, TEXT("[MOVE]   This action was configured incorrectly in ScheduleData!"));
+					UE_LOG(LogTemp, Error, TEXT("[MOVE]   Skipping resume for this action."));
+					
+					// Cleanup saved data
+					PausedTargetLocations.Remove(ActionHandle.HandleID);
+					PausedTargetActors.Remove(ActionHandle.HandleID);
+					return;
+				}
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("[MOVE]   No saved target! Cannot resume movement."));
+				return;
+			}
+
+			// ? RESTART movement to the target
+			FAIMoveRequest MoveRequest;
+			if (TargetActor)
+			{
+				MoveRequest.SetGoalActor(TargetActor);
+			}
+			else
+			{
+				MoveRequest.SetGoalLocation(TargetLocation);
+			}
+
+			MoveRequest.SetAcceptanceRadius(AcceptanceRadius);
+			MoveRequest.SetCanStrafe(bUsePathfinding);
+			MoveRequest.SetAllowPartialPath(bAcceptPartialPath);
+			MoveRequest.SetUsePathfinding(bUsePathfinding);
+
+			if (FilterClass)
+			{
+				MoveRequest.SetNavigationFilter(FilterClass);
+			}
+
+			FPathFollowingRequestResult MoveResult = Controller->MoveTo(MoveRequest);
+
+			if (MoveResult.Code == EPathFollowingRequestResult::RequestSuccessful || 
+				MoveResult.Code == EPathFollowingRequestResult::AlreadyAtGoal)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[MOVE]   ? Movement resumed successfully to %s"), 
+					TargetActor ? *TargetActor->GetName() : *TargetLocation.ToString());
+				
+				// ? Cleanup saved data
+				PausedTargetLocations.Remove(ActionHandle.HandleID);
+				PausedTargetActors.Remove(ActionHandle.HandleID);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("[MOVE]   ? Failed to resume movement! Result: %d"), (int32)MoveResult.Code);
+				UE_LOG(LogTemp, Error, TEXT("[MOVE]   Target: %s"), TargetActor ? *TargetActor->GetName() : *TargetLocation.ToString());
+				UE_LOG(LogTemp, Error, TEXT("[MOVE]   Pawn: %s"), Controller->GetPawn() ? *Controller->GetPawn()->GetName() : TEXT("NULL"));
+				UE_LOG(LogTemp, Error, TEXT("[MOVE]   Check: 1) NavMesh exists, 2) Target is reachable, 3) Pawn is on NavMesh"));
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[MOVE]   Controller is NULL!"));
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[MOVE]   Handle not found in ActiveMovements!"));
 	}
 }
 

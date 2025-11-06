@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -90,7 +90,6 @@ bool IsValid() const { return bIsValid; }
 };
 
 /**
- * Контекст для диалога (Context)
  * 
  * v1.3.1: Refactored to use Composition Pattern
  * 
@@ -99,14 +98,10 @@ bool IsValid() const { return bIsValid; }
  * - UDialogueParticipants - manages actors involved
  * - UDialogueVariableStore - manages data storage
  * 
- * Используется для Condition/Effect вычислений
- * Хранит:
  * - Player/NPC references
  * - Relationship data
  * - Quest state
  * - Inventory
- * - Все кастомные переменные
- * - Историю разговора
  */
 UCLASS(BlueprintType)
 class DIALOGUESYSTEMCORE_API UDialogueSessionContext : public UObject
@@ -134,6 +129,12 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Context")
     void Initialize();
 
+    /** NEW v1.13: Set owning runner (internal use only) */
+  void SetOwningRunner(UObject* Runner) { OwningRunner = Runner; }
+
+    /** NEW v1.13: Get owning runner (internal use only) */
+    UObject* GetOwningRunner() const { return OwningRunner.Get(); }
+
 protected:
     //==========================================================================
     // v1.3.1: Component Composition
@@ -150,6 +151,10 @@ protected:
     /** Variable store component */
     UPROPERTY()
     TObjectPtr<UDialogueVariableStore> Variables;
+
+    /** NEW v1.13: Weak reference to owning DialogueRunner (for sequence management) */
+    UPROPERTY(Transient)
+    TWeakObjectPtr<UObject> OwningRunner;
 
     //==========================================================================
     // DEPRECATED v1.3.1: Legacy fields (kept for backward compatibility)

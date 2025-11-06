@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,8 +13,8 @@ class UNeedModifierAsset;
 class UNeedEffectAsset;
 
 /**
- * Handle для безопасной ссылки на Need (без прямого указателя)
- * Используется для внешнего доступа к потребностям
+ * Handle )
+ * 
  */
 USTRUCT(BlueprintType)
 struct NEEDSCORE_API FNeedHandle
@@ -25,7 +25,7 @@ struct NEEDSCORE_API FNeedHandle
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Need Handle")
 	FGameplayTag NeedTag;
 
-	/** Owner component ID (для валидации) */
+	/** Owner component ID () */
 	UPROPERTY()
 	int32 OwnerID = 0;
 
@@ -69,8 +69,8 @@ enum class ENeedThresholdLevel : uint8
 };
 
 /**
- * LOD Level для симуляции потребностей
- * Определяет частоту обновления в зависимости от расстояния до камеры
+ * LOD Level 
+ * 
  */
 UENUM(BlueprintType)
 enum class ENeedLODLevel : uint8
@@ -116,7 +116,7 @@ enum class ENeedModifierOperation : uint8
 
 /**
  * Runtime state of a single Need
- * Хранит текущее значение, флаги, и runtime данные
+ * , , 
  */
 USTRUCT(BlueprintType)
 struct NEEDSCORE_API FNeedRuntimeState
@@ -139,11 +139,11 @@ struct NEEDSCORE_API FNeedRuntimeState
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Need State")
 	ENeedThresholdLevel CurrentThreshold = ENeedThresholdLevel::Normal;
 
-	/** Previous threshold (для детекции изменений) */
+	/** Previous threshold () */
 	UPROPERTY()
 	ENeedThresholdLevel PreviousThreshold = ENeedThresholdLevel::Normal;
 
-	/** Time accumulated for decay (для lerp) */
+	/** Time accumulated for decay () */
 	UPROPERTY()
 	float AccumulatedDecayTime = 0.0f;
 
@@ -198,7 +198,7 @@ struct NEEDSCORE_API FNeedThresholdConfig
 	/** Evaluate threshold level for a value */
 	ENeedThresholdLevel EvaluateThreshold(float Value, ENeedThresholdLevel CurrentLevel) const
 	{
-		// Если уже в Warning/Critical, нужен RecoveredThreshold для выхода
+
 		if (CurrentLevel == ENeedThresholdLevel::Warning || CurrentLevel == ENeedThresholdLevel::Critical)
 		{
 			if (Value >= RecoveredThreshold)
@@ -300,7 +300,7 @@ struct NEEDSCORE_API FMoodState
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mood")
 	float MoodValue = 0.0f;
 
-	/** Previous mood value (для детекции изменений) */
+	/** Previous mood value () */
 	UPROPERTY()
 	float PreviousMoodValue = 0.0f;
 

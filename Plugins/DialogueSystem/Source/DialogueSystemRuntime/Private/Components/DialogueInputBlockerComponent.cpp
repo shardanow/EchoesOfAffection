@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Components/DialogueInputBlockerComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -180,7 +180,7 @@ void UDialogueInputBlockerComponent::UnblockInput()
 		return;
 	}
 
-	// ВАЖНО: Всегда получаем свежий PlayerController
+
 	APlayerController* PC = FindPlayerController();
 	if (!PC)
 	{
@@ -227,13 +227,13 @@ void UDialogueInputBlockerComponent::UnblockInput()
 		UE_LOG(LogDialogueInput, Verbose, TEXT("Set input mode to Game And UI"));
 	}
 	
-	// Проверка состояния ПЕРЕД восстановлением
+
 	UE_LOG(LogDialogueInput, Log, TEXT("BEFORE Restore - MoveIgnored: %d, LookIgnored: %d"), 
 		PC->IsMoveInputIgnored(), PC->IsLookInputIgnored());
 
 	RestoreInput();
 
-	// Проверка состояния ПОСЛЕ восстановления
+
 	UE_LOG(LogDialogueInput, Log, TEXT("AFTER Restore - MoveIgnored: %d, LookIgnored: %d"), 
 		PC->IsMoveInputIgnored(), PC->IsLookInputIgnored());
 
@@ -250,7 +250,7 @@ void UDialogueInputBlockerComponent::UnblockInput()
 	UE_LOG(LogDialogueInput, Log, TEXT("AFTER Reset - MoveIgnored: %d, LookIgnored: %d"), 
 		PC->IsMoveInputIgnored(), PC->IsLookInputIgnored());
 	
-	// Проверка Enhanced Input состояния
+
 	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer()))
 	{
 		UE_LOG(LogDialogueInput, Log, TEXT("Enhanced Input Subsystem exists"));
@@ -328,8 +328,8 @@ void UDialogueInputBlockerComponent::BlockEnhancedInput(const FDialogueInputBloc
 
 	UE_LOG(LogDialogueInput, Log, TEXT("=== BlockEnhancedInput START ==="));
 
-	// НОВЫЙ ПОДХОД: НЕ очищаем контексты, а добавляем диалоговый с высоким приоритетом
-	// Это позволяет диалоговым действиям перекрыть все остальные без удаления контекстов
+
+
 
 	if (DialogueInputMappingContext.IsValid())
 	{
@@ -353,7 +353,7 @@ void UDialogueInputBlockerComponent::BlockEnhancedInput(const FDialogueInputBloc
 	}
 	else
 	{
-		// Если нет диалогового контекста, блокируем через Legacy метод
+
 		UE_LOG(LogDialogueInput, Warning, TEXT("No dialogue input mapping context - using legacy blocking"));
 		BlockLegacyInput(Settings);
 	}
@@ -419,7 +419,7 @@ void UDialogueInputBlockerComponent::RestoreEnhancedInput()
 
 	UE_LOG(LogDialogueInput, Log, TEXT("=== RestoreEnhancedInput START ==="));
 
-	// Просто удаляем диалоговый контекст - все остальные контексты остались нетронутыми
+
 	if (DialogueInputMappingContext.IsValid())
 	{
 		UInputMappingContext* Context = DialogueInputMappingContext.Get();
@@ -436,7 +436,7 @@ void UDialogueInputBlockerComponent::RestoreEnhancedInput()
 	}
 	else
 	{
-		// Если не было диалогового контекста, восстанавливаем Legacy
+
 		UE_LOG(LogDialogueInput, Warning, TEXT("No dialogue input mapping context - restoring legacy input"));
 		RestoreLegacyInput();
 	}

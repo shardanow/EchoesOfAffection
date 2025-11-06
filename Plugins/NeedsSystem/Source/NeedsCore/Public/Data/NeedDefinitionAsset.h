@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,7 +10,7 @@
 
 /**
  * Data Asset defining a single need (Hunger, Energy, etc.)
- * Полностью data-driven конфигурация потребности
+ * 
  */
 UCLASS(BlueprintType)
 class NEEDSCORE_API UNeedDefinitionAsset : public UPrimaryDataAsset

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Subsystems/NeedsSubsystem.h"
 #include "Components/CharacterNeedsComponent.h"
@@ -418,10 +418,10 @@ void UNeedsSubsystem::UpdateGameTime(float DeltaTime)
 {
 	if (!Settings->bUseGameTime || !TimeSystem)
 	{
-		// Real time fallback (если нет Time System)
+
 		CurrentGameTimeHours += DeltaTime * Settings->RealTimeScale;
 	}
-	// Иначе время обновляется через OnTimeSystemHourChanged
+
 }
 
 void UNeedsSubsystem::DrawDebugInfo()

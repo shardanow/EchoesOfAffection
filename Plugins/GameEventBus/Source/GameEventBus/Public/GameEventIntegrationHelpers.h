@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,8 +10,8 @@
 /**
  * Integration Helpers
  * 
- * Упрощённые функции для интеграции систем с GameEventBus
- * Позволяют настраивать взаимодействие систем через Blueprint без кода
+ * 
+ * 
  */
 UCLASS()
 class GAMEEVENTBUS_API UGameEventIntegrationHelpers : public UBlueprintFunctionLibrary
@@ -23,11 +23,11 @@ public:
 
 	/**
 	 * Register Quest Effect
-	 * Регистрирует эффект для запуска квеста
+	 * 
 	 * 
 	 * @param WorldContext World context
-	 * @param EffectTag Tag для этого эффекта (например, "Effect.Quest.Start")
-	 * @param QuestId ID квеста который будет запускаться
+	 * @param EffectTag Tag , "Effect.Quest.Start")
+	 * @param QuestId ID 
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Game Events|Integration|Quest", meta = (WorldContext = "WorldContext"))
 	static void RegisterQuestStartEffect(
@@ -38,11 +38,11 @@ public:
 
 	/**
 	 * Register Dialogue Effect
-	 * Регистрирует эффект для запуска диалога
+	 * 
 	 * 
 	 * @param WorldContext World context
-	 * @param EffectTag Tag для этого эффекта (например, "Effect.Dialogue.Start")
-	 * @param DialogueId ID диалога который будет запускаться
+	 * @param EffectTag Tag , "Effect.Dialogue.Start")
+	 * @param DialogueId ID 
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Game Events|Integration|Dialogue", meta = (WorldContext = "WorldContext"))
 	static void RegisterDialogueStartEffect(
@@ -53,12 +53,12 @@ public:
 
 	/**
 	 * Register Item Give Effect
-	 * Регистрирует эффект для выдачи предмета
+	 * 
 	 * 
 	 * @param WorldContext World context
-	 * @param EffectTag Tag для этого эффекта (например, "Effect.Inventory.GiveItem")
-	 * @param ItemId ID предмета
-	 * @param Count Количество
+	 * @param EffectTag Tag , "Effect.Inventory.GiveItem")
+	 * @param ItemId ID 
+	 * @param Count 
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Game Events|Integration|Inventory", meta = (WorldContext = "WorldContext"))
 	static void RegisterItemGiveEffect(
@@ -74,11 +74,11 @@ public:
 
 	/**
 	 * Register Quest Active Condition
-	 * Регистрирует условие "квест активен"
+	 * 
 	 * 
 	 * @param WorldContext World context
-	 * @param ConditionTag Tag для этого условия (например, "Condition.Quest.IsActive")
-	 * @param QuestId ID квеста для проверки
+	 * @param ConditionTag Tag , "Condition.Quest.IsActive")
+	 * @param QuestId ID 
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Game Events|Integration|Quest", meta = (WorldContext = "WorldContext"))
 	static void RegisterQuestActiveCondition(
@@ -89,12 +89,12 @@ public:
 
 	/**
 	 * Register Item Count Condition
-	 * Регистрирует условие "игрок имеет N предметов"
+	 * 
 	 * 
 	 * @param WorldContext World context
-	 * @param ConditionTag Tag для этого условия (например, "Condition.Inventory.HasItem")
-	 * @param ItemId ID предмета
-	 * @param RequiredCount Требуемое количество
+	 * @param ConditionTag Tag , "Condition.Inventory.HasItem")
+	 * @param ItemId ID 
+	 * @param RequiredCount 
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Game Events|Integration|Inventory", meta = (WorldContext = "WorldContext"))
 	static void RegisterItemCountCondition(
@@ -106,12 +106,12 @@ public:
 
 	/**
 	 * Register Time Range Condition
-	 * Регистрирует условие "время в диапазоне"
+	 * 
 	 * 
 	 * @param WorldContext World context
-	 * @param ConditionTag Tag для этого условия (например, "Condition.Time.InRange")
-	 * @param StartHour Начальный час (0-23)
-	 * @param EndHour Конечный час (0-23)
+	 * @param ConditionTag Tag , "Condition.Time.InRange")
+	 * @param StartHour )
+	 * @param EndHour )
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Game Events|Integration|Time", meta = (WorldContext = "WorldContext"))
 	static void RegisterTimeRangeCondition(
@@ -127,40 +127,40 @@ public:
 
 	/**
 	 * Setup Quest-Dialogue Integration
-	 * Автоматически настраивает связь квестов и диалогов
 	 * 
-	 * - Регистрирует эффекты запуска квестов из диалогов
-	 * - Регистрирует условия проверки квестов в диалогах
+	 * 
+	 * - 
+	 * - 
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Game Events|Integration|Setup", meta = (WorldContext = "WorldContext"))
 	static void SetupQuestDialogueIntegration(UObject* WorldContext);
 
 	/**
 	 * Setup Inventory-Quest Integration
-	 * Автоматически настраивает связь инвентаря и квестов
 	 * 
-	 * - Настраивает эмиссию событий получения предметов
-	 * - Регистрирует условия проверки предметов для квестов
+	 * 
+	 * - 
+	 * - 
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Game Events|Integration|Setup", meta = (WorldContext = "WorldContext"))
 	static void SetupInventoryQuestIntegration(UObject* WorldContext);
 
 	/**
 	 * Setup Time-Quest Integration
-	 * Автоматически настраивает связь времени и квестов
 	 * 
-	 * - Настраивает эмиссию событий времени
-	 * - Регистрирует условия проверки времени для квестов
+	 * 
+	 * - 
+	 * - 
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Game Events|Integration|Setup", meta = (WorldContext = "WorldContext"))
 	static void SetupTimeQuestIntegration(UObject* WorldContext);
 
 	/**
 	 * Setup All Integrations
-	 * Автоматически настраивает ВСЕ интеграции
 	 * 
-	 * Вызовите эту функцию один раз при старте игры
-	 * (например, в GameMode BeginPlay или GameInstance Init)
+	 * 
+	 * 
+	 * (, )
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Game Events|Integration|Setup", meta = (WorldContext = "WorldContext"))
 	static void SetupAllIntegrations(UObject* WorldContext);
@@ -171,14 +171,14 @@ public:
 
 	/**
 	 * Print all registered effects and conditions
-	 * Полезно для отладки
+	 * 
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Game Events|Debug", meta = (WorldContext = "WorldContext"))
 	static void PrintRegisteredEffectsAndConditions(UObject* WorldContext);
 
 	/**
 	 * Test event emission
-	 * Эмитирует тестовое событие для проверки
+	 * 
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Game Events|Debug", meta = (WorldContext = "WorldContext"))
 	static void TestEventEmission(

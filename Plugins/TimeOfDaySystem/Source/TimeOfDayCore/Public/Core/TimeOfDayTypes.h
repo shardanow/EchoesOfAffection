@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+ï»¿// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -476,7 +476,7 @@ struct TIMEOFDAYCORE_API FDaylightSettings
 			return -10.0f; // Below horizon at night
 		}
 
-		// Simple arc: 0° at sunrise/sunset, 90° at noon
+
 		// Using sine wave for smooth transition
 		const float Radians = NormalizedPos * PI;
 		return FMath::Sin(Radians) * 90.0f;

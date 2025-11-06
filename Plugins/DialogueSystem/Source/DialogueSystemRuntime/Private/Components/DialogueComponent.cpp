@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Components/DialogueComponent.h"
 #include "Interfaces/IDialogueParticipant.h"
@@ -85,7 +85,7 @@ void UDialogueComponent::OnDialogueStarted_Implementation(UDialogueRunner* Runne
     ActiveRunner = Runner;
     SetComponentTickEnabled(true);
     
-    // Broadcast delegate (избегаем конфликта имен через явное указание)
+
     OnDialogueStarted.Broadcast(Runner);
     
     // Create memory of dialogue start if memory component exists
@@ -109,7 +109,7 @@ void UDialogueComponent::OnDialogueEnded_Implementation()
     ActiveRunner = nullptr;
     SetComponentTickEnabled(false);
     
-    // Broadcast delegate (избегаем конфликта имен через явное указание)
+
     OnDialogueEnded.Broadcast();
 }
 
@@ -169,7 +169,7 @@ bool UDialogueComponent::StartDialogue(AActor* Initiator)
     // Bind to node changed event
     Runner->OnNodeEntered.AddDynamic(this, &UDialogueComponent::HandleNodeEntered);
      
-        // Call interface method (через IDialogueParticipant)
+
         IDialogueParticipant::Execute_OnDialogueStarted(this, Runner);
         
         return true;

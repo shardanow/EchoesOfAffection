@@ -2,6 +2,7 @@
 
 #include "Effects/DialogueEffectParser.h"
 #include "Effects/DialogueEffectExecutor.h"
+#include "Effects/DialogueEffect_PlaySequence.h"
 #include "Core/DialogueContext.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogDialogueParser, Log, All);
@@ -174,6 +175,10 @@ UDialogueEffect* UDialogueEffectParser::ParseSingleEffect(const TArray<FString>&
 	{
 		return ParseCompleteQuest(Args);
 	}
+	else if (EffectType.Equals(TEXT("PlaySequence"), ESearchCase::IgnoreCase))
+	{
+		return ParsePlaySequence(Args);
+	}
 
 	UE_LOG(LogDialogueParser, Warning, TEXT("Unknown effect type: %s"), *EffectType);
 	return nullptr;
@@ -324,6 +329,37 @@ UDialogueEffect* UDialogueEffectParser::ParseCompleteQuest(const TArray<FString>
 
 	UDialogueEffect_CompleteQuest* Effect = NewObject<UDialogueEffect_CompleteQuest>();
 	Effect->QuestId = FName(*Args[0]);
+
+	return Effect;
+}
+
+UDialogueEffect* UDialogueEffectParser::ParsePlaySequence(const TArray<FString>& Args)
+{
+	if (Args.Num() < 1)
+	{
+		UE_LOG(LogDialogueParser, Error, TEXT("PlaySequence requires 1 argument: sequencePath"));
+		return nullptr;
+	}
+
+	UDialogueEffect_PlaySequence* Effect = NewObject<UDialogueEffect_PlaySequence>();
+	
+	// Parse sequence asset path
+	FString SequencePath = Args[0];
+	Effect->SequenceAsset = TSoftObjectPtr<ULevelSequence>(FSoftObjectPath(SequencePath));
+
+	// Optional: bWaitForCompletion (default: true)
+	if (Args.Num() > 1)
+	{
+		Effect->bWaitForCompletion = Args[1].ToBool();
+	}
+
+	// Optional: bRestoreCameraAfter (default: true)
+	if (Args.Num() > 2)
+	{
+		Effect->bRestoreCameraAfter = Args[2].ToBool();
+	}
+
+	UE_LOG(LogDialogueParser, Log, TEXT("Parsed PlaySequence effect: %s"), *SequencePath);
 
 	return Effect;
 }

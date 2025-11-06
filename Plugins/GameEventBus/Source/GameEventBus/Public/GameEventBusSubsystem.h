@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,7 +12,7 @@ class UGameEventEffectRegistry;
 
 /**
  * Generic Game Event Payload
- * Унифицированная структура для передачи событий между системами
+ * 
  */
 USTRUCT(BlueprintType)
 struct GAMEEVENTBUS_API FGameEventPayload
@@ -51,6 +51,21 @@ struct GAMEEVENTBUS_API FGameEventPayload
 	UPROPERTY(BlueprintReadWrite, Category = "Event")
 	TWeakObjectPtr<AActor> TargetActor;
 
+	/** 
+	 * NEW v1.13.2: Additional actors involved in event (sequence participants, etc.)
+	 * Generic field - can be used by ANY system (not just Dialogue!)
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Event")
+	TArray<AActor*> AdditionalActors;
+
+	/**
+	 * NEW v1.14: Additional PersonaIds (for AdditionalPersonas in DialogueDataAsset)
+	 * Used by ScheduleComponent to check if it should pause during dialogue
+	 * Format: ["Alice", "Bob", "Eve"]
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Event")
+	TArray<FString> AdditionalPersonaIds;
+
 	/** Arbitrary UObject payload */
 	UPROPERTY(BlueprintReadWrite, Category = "Event")
 	TWeakObjectPtr<UObject> PayloadObject;
@@ -87,7 +102,7 @@ struct GAMEEVENTBUS_API FGameEventPayload
 
 /**
  * Event Listener Delegate
- * Подписчики получают уведомления через этот делегат
+ * 
  */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FGameEventDelegate, const FGameEventPayload&, Payload);
 
@@ -99,21 +114,21 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FGameEventNativeDelegate, const FGameEventPa
 /**
  * Central Game Event Bus Subsystem
  * 
- * Архитектурный паттерн: Event-Driven Architecture
- * Принципы:
- * - Системы не зависят друг от друга напрямую
- * - Связь через события (GameplayTags)
- * - Подписка на конкретные теги или иерархии тегов
- * - Поддержка Blueprint и C++
  * 
- * Примеры использования:
  * 
- * 1) Квестовая система слушает "Quest.Event.ItemAcquired"
- * 2) Диалоговая система эмитирует "Dialogue.Event.NodeReached"
- * 3) Система инвентаря эмитирует "Inventory.Event.ItemUsed"
- * 4) Система времени эмитирует "Time.Event.HourChanged"
+ * - 
+ * - )
+ * - 
+ * - 
  * 
- * Все системы работают независимо, но связаны событиями!
+ * 
+ * 
+ * 1) 
+ * 2) 
+ * 3) 
+ * 4) 
+ * 
+ * , 
  */
 UCLASS(BlueprintType)
 class GAMEEVENTBUS_API UGameEventBusSubsystem : public UGameInstanceSubsystem

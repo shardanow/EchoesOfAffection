@@ -102,6 +102,7 @@ private:
 	UDialogueEffect* ParseRemoveTag(const TArray<FString>& Args);
 	UDialogueEffect* ParseStartQuest(const TArray<FString>& Args);
 	UDialogueEffect* ParseCompleteQuest(const TArray<FString>& Args);
+	UDialogueEffect* ParsePlaySequence(const TArray<FString>& Args); // NEW: Sequence support
 
 	/**
 	 * Helper: Trim whitespace and quotes from string

@@ -43,6 +43,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Schedule")
 	FGameplayTagContainer ActorScheduleTags;
 
+	// ? NEW v1.14: Option to pause ALL NPCs during ANY dialogue (not just participants)
+	/**
+	 * If true, this actor's schedule will pause during ANY dialogue in the game.
+	 * If false (default), schedule only pauses if this actor is a dialogue participant.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Schedule|Dialogue Integration", 
+		meta = (DisplayName = "Pause During Any Dialogue"))
+	bool bPauseDuringAnyDialogue = false;
+
 	/** Called when an action starts */
 	UPROPERTY(BlueprintAssignable, Category = "Schedule Events")
 	FOnScheduleActionStarted OnActionStarted;
@@ -181,4 +190,36 @@ private:
 
 	/** Last evaluation time to prevent duplicate evaluations */
 	float LastEvaluationTime = -1.0f;
+
+	//~ Begin GameEventBus Integration (Dialogue System soft coupling)
+
+	/** GameEventBus delegate handles for dialogue events */
+#if WITH_GAMEEVENTBUS
+	FDelegateHandle DialogueStartedHandle;
+	FDelegateHandle DialogueEndedHandle;
+	FDelegateHandle SequenceStartedHandle; // ? NEW v1.13.3
+	FDelegateHandle SequenceEndedHandle;   // ? NEW v1.13.3
+#endif
+
+	/** Subscribe to dialogue events from GameEventBus */
+	void SubscribeToDialogueEvents();
+
+	/** Unsubscribe from dialogue events */
+	void UnsubscribeFromDialogueEvents();
+
+#if WITH_GAMEEVENTBUS
+	/** Called when dialogue starts (via GameEventBus) */
+	void OnDialogueStarted(const struct FGameEventPayload& Payload);
+
+	/** Called when dialogue ends (via GameEventBus) */
+	void OnDialogueEnded(const struct FGameEventPayload& Payload);
+	
+	/** ? NEW v1.13.3: Called when sequence starts (via GameEventBus) */
+	void OnSequenceStarted(const struct FGameEventPayload& Payload);
+
+	/** ? NEW v1.13.3: Called when sequence ends (via GameEventBus) */
+	void OnSequenceEnded(const struct FGameEventPayload& Payload);
+#endif
+
+	//~ End GameEventBus Integration
 };

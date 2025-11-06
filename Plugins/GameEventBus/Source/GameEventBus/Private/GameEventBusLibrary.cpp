@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "GameEventBusLibrary.h"
 
@@ -67,7 +67,7 @@ void UGameEventBusLibrary::EmitItemEvent(UObject* WorldContextObject, const FGam
 	FGameEventPayload Payload = MakeItemPayload(EventTag, ItemId, Count, Instigator);
 	
 	UE_LOG(LogGameEventBusLibrary, Log, TEXT("[EmitItemEvent] ?? Calling EventBus->EmitEvent..."));
-	EventBus->EmitEvent(Payload, true); // ? Всегда логируем для диагностики!
+	EventBus->EmitEvent(Payload, true); // ? 
 	
 	UE_LOG(LogGameEventBusLibrary, Log, TEXT("[EmitItemEvent] ? EmitEvent call complete!"));
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -23,7 +23,7 @@ struct FTimeOfDayTime;
  * - Time integration (game time or real time)
  * - Global settings management
  * 
- * NO per-actor tick - все обновления батчем!
+ * NO per-actor tick - 
  */
 UCLASS()
 class NEEDSRUNTIME_API UNeedsSubsystem : public UTickableWorldSubsystem, public INeedsManager

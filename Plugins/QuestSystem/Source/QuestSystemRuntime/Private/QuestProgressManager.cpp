@@ -90,6 +90,23 @@ bool UQuestProgressManager::StartQuestInternal(FName QuestId, UQuestAsset* Quest
 		return false;
 	}
 
+	// Check current state
+	EQuestState CurrentState = GetQuestState(QuestId);
+	
+	// If already active, don't start again
+	if (CurrentState == EQuestState::Active)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("QuestProgressManager: Quest '%s' is already active, skipping start"), *QuestId.ToString());
+		return false;
+	}
+
+	// If completed and not repeatable, don't start
+	if (CurrentState == EQuestState::Completed && !QuestAsset->Meta.bIsRepeatable)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("QuestProgressManager: Quest '%s' is completed and not repeatable"), *QuestId.ToString());
+		return false;
+	}
+
 	// Check dependencies
 	TArray<FText> FailReasons;
 	if (!CanStartQuest(QuestId, FailReasons))
@@ -99,14 +116,6 @@ bool UQuestProgressManager::StartQuestInternal(FName QuestId, UQuestAsset* Quest
 		{
 			UE_LOG(LogTemp, Warning, TEXT("  - %s"), *Reason.ToString());
 		}
-		return false;
-	}
-
-	// Check if repeatable
-	EQuestState CurrentState = GetQuestState(QuestId);
-	if (!QuestAsset->Meta.bIsRepeatable && CurrentState == EQuestState::Completed)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("QuestProgressManager: Quest '%s' is not repeatable"), *QuestId.ToString());
 		return false;
 	}
 

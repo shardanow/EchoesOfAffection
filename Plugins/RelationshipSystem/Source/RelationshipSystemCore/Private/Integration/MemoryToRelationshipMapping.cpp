@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Integration/MemoryToRelationshipMapping.h"
 
@@ -9,7 +9,7 @@ bool UMemoryToRelationshipMapping::FindActionForMemoryType(
 	{
 		if (Mapping.MemoryTypeName.Equals(MemoryType, ESearchCase::IgnoreCase))
 		{
-			// Проверяем важность
+
 			if (Importance >= Mapping.MinImportance)
 			{
 				OutActionTag = Mapping.ActionTag;

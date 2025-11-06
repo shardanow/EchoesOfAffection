@@ -50,6 +50,8 @@ public:
 protected:
 	virtual FScheduleActionHandle ExecuteActionInternal_Implementation(const FScheduleExecutionContext& Context) override;
 	virtual void CancelActionInternal_Implementation(FScheduleActionHandle ActionHandle) override;
+	virtual void PauseActionInternal_Implementation(FScheduleActionHandle ActionHandle) override;
+	virtual void ResumeActionInternal_Implementation(FScheduleActionHandle ActionHandle) override;
 	virtual bool IsActionActiveInternal_Implementation(FScheduleActionHandle ActionHandle) const override;
 	virtual FText GetActionDescription_Implementation() const override;
 
@@ -57,4 +59,12 @@ private:
 	/** Track movement requests */
 	UPROPERTY(Transient)
 	TMap<FGuid, TWeakObjectPtr<AAIController>> ActiveMovements;
+
+	/** ? NEW: Store target locations for resume after pause */
+	UPROPERTY(Transient)
+	TMap<FGuid, FVector> PausedTargetLocations;
+
+	/** ? NEW: Store target actors for resume after pause */
+	UPROPERTY(Transient)
+	TMap<FGuid, TWeakObjectPtr<AActor>> PausedTargetActors;
 };

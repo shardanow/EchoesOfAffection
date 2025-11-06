@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,23 +8,22 @@
 #include "MemoryToRelationshipMapping.generated.h"
 
 /**
- * Модификаторы dimension на основе эмоции памяти
- * Конфигурируются в Data Asset, без хардкода
+ * Dimension modifier based on memory emotion
  */
 USTRUCT(BlueprintType)
 struct RELATIONSHIPSYSTEMCORE_API FEmotionDimensionModifier
 {
 	GENERATED_BODY()
 
-	/** Какую dimension затрагивает (Trust, Affinity, Romance, etc.) */
+	/** Dimension tag */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Modifier")
 	FGameplayTag DimensionTag;
 
-	/** Множитель влияния важности памяти (0.0 - 2.0) */
+	/** Importance multiplier */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Modifier", meta=(ClampMin="0.0", ClampMax="2.0"))
 	float ImportanceMultiplier = 1.0f;
 
-	/** Направление влияния */
+	/** Positive influence flag */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Modifier")
 	bool bPositiveInfluence = true;
 
@@ -35,22 +34,22 @@ struct RELATIONSHIPSYSTEMCORE_API FEmotionDimensionModifier
 };
 
 /**
- * Маппинг типа памяти на действие в отношениях
+ * Memory type to relationship action mapping
  */
 USTRUCT(BlueprintType)
 struct RELATIONSHIPSYSTEMCORE_API FMemoryActionMapping
 {
 	GENERATED_BODY()
 
-	/** Тип памяти (из NPCMemoryComponent enum, передаётся как string) */
+	/** Memory type name */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mapping")
 	FString MemoryTypeName;
 
-	/** Действие в RelationshipSystem */
+	/** Action tag */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mapping", meta=(Categories="Relationship.Action"))
 	FGameplayTag ActionTag;
 
-	/** Минимальная важность для срабатывания */
+	/** Minimum importance threshold */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mapping", meta=(ClampMin="0.0", ClampMax="100.0"))
 	float MinImportance = 70.0f;
 
@@ -60,27 +59,24 @@ struct RELATIONSHIPSYSTEMCORE_API FMemoryActionMapping
 };
 
 /**
- * Маппинг эмоции на модификаторы dimensions
+ * Emotion to dimension mapping
  */
 USTRUCT(BlueprintType)
 struct RELATIONSHIPSYSTEMCORE_API FEmotionMapping
 {
 	GENERATED_BODY()
 
-	/** Эмоция памяти (из NPCMemoryComponent enum) */
+	/** Emotion name */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mapping")
 	FString EmotionName;
 
-	/** Список модификаторов для разных dimensions */
+	/** Dimension modifiers */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mapping")
 	TArray<FEmotionDimensionModifier> DimensionModifiers;
 };
 
 /**
- * Data Asset для конфигурации интеграции NPCMemory ? RelationshipSystem
- * 
- * Полностью data-driven, без хардкода в C++
- * Дизайнеры могут настраивать через Editor
+ * Data Asset for NPCMemory to RelationshipSystem integration mapping
  */
 UCLASS(BlueprintType)
 class RELATIONSHIPSYSTEMCORE_API UMemoryToRelationshipMapping : public UDataAsset
@@ -88,44 +84,44 @@ class RELATIONSHIPSYSTEMCORE_API UMemoryToRelationshipMapping : public UDataAsse
 	GENERATED_BODY()
 
 public:
-	/** Маппинг типов памяти на действия */
+	/** Memory type action mappings */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Memory Mapping")
 	TArray<FMemoryActionMapping> MemoryTypeActions;
 
-	/** Маппинг эмоций на модификаторы dimensions */
+	/** Emotion mappings */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Emotion Mapping")
 	TArray<FEmotionMapping> EmotionMappings;
 
-	/** Минимальная важность памяти для влияния на отношения */
+	/** Global minimum importance */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings", meta=(ClampMin="0.0", ClampMax="100.0"))
 	float GlobalMinImportance = 60.0f;
 
-	/** Минимальная свежесть памяти (0.0 - 1.0) */
+	/** Minimum freshness threshold */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings", meta=(ClampMin="0.0", ClampMax="1.0"))
 	float MinFreshness = 0.4f;
 
-	/** Включить автоматическую синхронизацию Memory ? Relationship */
+	/** Enable memory to relationship sync */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings")
 	bool bEnableMemoryToRelationship = true;
 
-	/** Включить автоматическое создание памяти при изменении отношений */
+	/** Enable relationship to memory sync */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings")
 	bool bEnableRelationshipToMemory = true;
 
-	/** Интервал синхронизации (секунды) */
+	/** Sync interval in seconds */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Performance", meta=(ClampMin="30.0", ClampMax="300.0"))
 	float SyncInterval = 60.0f;
 
 public:
-	/** Найти действие для типа памяти */
+	/** Find action for memory type */
 	UFUNCTION(BlueprintPure, Category = "Memory Mapping")
 	bool FindActionForMemoryType(const FString& MemoryType, float Importance, FGameplayTag& OutActionTag) const;
 
-	/** Получить модификаторы для эмоции */
+	/** Get modifiers for emotion */
 	UFUNCTION(BlueprintPure, Category = "Memory Mapping")
 	TArray<FEmotionDimensionModifier> GetModifiersForEmotion(const FString& EmotionName) const;
 
-	/** Проверить, должна ли память влиять на отношения */
+	/** Check if memory should affect relationship */
 	UFUNCTION(BlueprintPure, Category = "Memory Mapping")
 	bool ShouldMemoryAffectRelationship(float Importance, float Freshness) const;
 };

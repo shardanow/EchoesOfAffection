@@ -1,10 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "SaveGame/DialogueSaveData.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/SaveGame.h"
-
-// Константы для сохранения
 const FString UDialogueSaveGame::SaveSlotName = TEXT("DialogueSaveSlot");
 const int32 UDialogueSaveGame::UserIndex = 0;
 
@@ -102,7 +100,6 @@ FString UDialogueSaveGame::GetGlobalVariable(FName Key, const FString& DefaultVa
 
 FDialogueNodeVisitData* UDialogueSaveGame::GetOrCreateNodeVisitData(FName DialogueId)
 {
-    // Найти существующие данные
     for (FDialogueNodeVisitData& Data : NodeVisitData)
     {
         if (Data.DialogueId == DialogueId)
@@ -110,8 +107,6 @@ FDialogueNodeVisitData* UDialogueSaveGame::GetOrCreateNodeVisitData(FName Dialog
             return &Data;
         }
     }
-
-    // Создать новые
     FDialogueNodeVisitData NewData(DialogueId);
     NodeVisitData.Add(NewData);
     return &NodeVisitData.Last();
@@ -132,16 +127,12 @@ const FDialogueNodeVisitData* UDialogueSaveGame::FindNodeVisitData(FName Dialogu
 UDialogueSaveGame* UDialogueSaveGame::LoadOrCreateSaveGame(UObject* WorldContextObject)
 {
     UDialogueSaveGame* SaveGameObject = nullptr;
-
-    // Попытка загрузить существующий SaveGame
     if (UGameplayStatics::DoesSaveGameExist(SaveSlotName, UserIndex))
     {
         SaveGameObject = Cast<UDialogueSaveGame>(
             UGameplayStatics::LoadGameFromSlot(SaveSlotName, UserIndex)
         );
     }
-
-    // Если не удалось загрузить - создать новый
     if (!SaveGameObject)
     {
         SaveGameObject = Cast<UDialogueSaveGame>(

@@ -10,12 +10,32 @@
 
 float URelationshipDimensionBar::GetDimensionValue() const
 {
-	if (!SubjectComponent || !Target || !DimensionTag.IsValid())
+	if (!Subject || !Target || !DimensionTag.IsValid())
 	{
 		return 0.0f;
 	}
 
-	return SubjectComponent->GetDimensionValue(Target, DimensionTag);
+	// ? FIX: Use GameInstance->GetSubsystem for GameInstanceSubsystem
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return 0.0f;
+	}
+
+	UGameInstance* GameInstance = World->GetGameInstance();
+	if (!GameInstance)
+	{
+		return 0.0f;
+	}
+
+	URelationshipSubsystem* Subsystem = GameInstance->GetSubsystem<URelationshipSubsystem>();
+	if (!Subsystem)
+	{
+		return 0.0f;
+	}
+
+	// ? Subsystem works globally, no need for actor relevancy!
+	return Subsystem->GetDimensionValue(Subject, Target, DimensionTag);
 }
 
 float URelationshipDimensionBar::GetNormalizedValue() const
@@ -27,8 +47,20 @@ float URelationshipDimensionBar::GetNormalizedValue() const
 		return RawValue;
 	}
 
-	// Get dimension for normalization
-	URelationshipSubsystem* Subsystem = SubjectComponent ? SubjectComponent->GetRelationshipSubsystem() : nullptr;
+	// ? FIX: Use GameInstance subsystem
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return 0.5f;
+	}
+
+	UGameInstance* GameInstance = World->GetGameInstance();
+	if (!GameInstance)
+	{
+		return 0.5f;
+	}
+
+	URelationshipSubsystem* Subsystem = GameInstance->GetSubsystem<URelationshipSubsystem>();
 	if (!Subsystem)
 	{
 		return 0.5f; // Default middle value
@@ -56,16 +88,20 @@ FText URelationshipDimensionBar::GetDimensionDisplayName() const
 		return FText::FromString(TEXT("Unknown"));
 	}
 
-	// Try to get display name from database
-	if (SubjectComponent)
+	// ? FIX: Use GameInstance subsystem
+	UWorld* World = GetWorld();
+	if (World)
 	{
-		if (URelationshipSubsystem* Subsystem = SubjectComponent->GetRelationshipSubsystem())
+		if (UGameInstance* GameInstance = World->GetGameInstance())
 		{
-			if (URelationshipDatabase* Database = Subsystem->GetDatabase())
+			if (URelationshipSubsystem* Subsystem = GameInstance->GetSubsystem<URelationshipSubsystem>())
 			{
-				if (URelationshipDimension* Dimension = Database->FindDimension(DimensionTag))
+				if (URelationshipDatabase* Database = Subsystem->GetDatabase())
 				{
-					return Dimension->GetDisplayName();
+					if (URelationshipDimension* Dimension = Database->FindDimension(DimensionTag))
+					{
+						return Dimension->GetDisplayName();
+					}
 				}
 			}
 		}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,20 +19,20 @@
 /**
  * Time System Game Event Emitter
  * 
- * Интегрируется с системой времени и транслирует её в GameEventBus
- * Используется в системе времени и календаря для оповещения
  * 
- * Базовые события:
- * - Time.Event.HourChanged - изменение часа (IntParam = номер часа)
- * - Time.Event.DayChanged - изменение дня (IntParam = номер дня)
- * - Time.Event.TimeOfDay - изменение нормализованного дня (IntParam = час, FloatParam = минута)
- * - Time.Event.Season.Changed - изменение сезона
- * - Weather.Event.Changed - изменение погоды (AdditionalTags = теги погоды)
  * 
- * Использование:
- * 1) Добавьте этот компонент к актору Time Manager'а
- * 2) События будут автоматически транслироваться
- * 3) Другие системы слушают их через GameEventBus
+ * 
+ * 
+ * - Time.Event.HourChanged - )
+ * - Time.Event.DayChanged - )
+ * - Time.Event.TimeOfDay - , FloatParam = )
+ * - Time.Event.Season.Changed - 
+ * - Weather.Event.Changed - )
+ * 
+ * 
+ * 1) 
+ * 2) 
+ * 3) 
  */
 UCLASS(BlueprintType, ClassGroup = (Time), meta = (BlueprintSpawnableComponent))
 class UTimeSystemGameEventEmitter : public UActorComponent

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Components/DialogueCameraComponent.h"
 #include "Camera/CameraComponent.h"
@@ -529,7 +529,7 @@ void UDialogueCameraComponent::InitializeFramingPresets()
 	FDialogueCameraSettings CloseUp;
 	CloseUp.Framing = EDialogueCameraFraming::CloseUp;
 	CloseUp.Distance = 120.0f;
-	CloseUp.HeightOffset = 10.0f;  // Камера чуть выше головы NPC
+	CloseUp.HeightOffset = 10.0f;  // 
 	CloseUp.AngleOffset = 15.0f;
 	CloseUp.PitchAdjustment = -5.0f;
 	CloseUp.FOVOverride = 60.0f;
@@ -541,7 +541,7 @@ void UDialogueCameraComponent::InitializeFramingPresets()
 	FDialogueCameraSettings Medium;
 	Medium.Framing = EDialogueCameraFraming::Medium;
 	Medium.Distance = 200.0f;
-	Medium.HeightOffset = 20.0f;  // Камера выше для лучшего обзора
+	Medium.HeightOffset = 20.0f;  // 
 	Medium.AngleOffset = 25.0f;
 	Medium.PitchAdjustment = -3.0f;
 	Medium.FOVOverride = 70.0f;
@@ -553,7 +553,7 @@ void UDialogueCameraComponent::InitializeFramingPresets()
 	FDialogueCameraSettings Full;
 	Full.Framing = EDialogueCameraFraming::Full;
 	Full.Distance = 350.0f;
-	Full.HeightOffset = 30.0f;  // Выше для полного обзора
+	Full.HeightOffset = 30.0f;  // 
 	Full.AngleOffset = 30.0f;
 	Full.PitchAdjustment = 0.0f;
 	Full.FOVOverride = 80.0f;
@@ -565,7 +565,7 @@ void UDialogueCameraComponent::InitializeFramingPresets()
 	FDialogueCameraSettings OverShoulder;
 	OverShoulder.Framing = EDialogueCameraFraming::OverShoulder;
 	OverShoulder.Distance = 180.0f;
-	OverShoulder.HeightOffset = 15.0f;  // Чуть выше плеча
+	OverShoulder.HeightOffset = 15.0f;  // 
 	OverShoulder.AngleOffset = 45.0f;
 	OverShoulder.PitchAdjustment = -2.0f;
 	OverShoulder.FOVOverride = 65.0f;
@@ -577,7 +577,7 @@ void UDialogueCameraComponent::InitializeFramingPresets()
 	FDialogueCameraSettings TwoShot;
 	TwoShot.Framing = EDialogueCameraFraming::TwoShot;
 	TwoShot.Distance = 300.0f;
-	TwoShot.HeightOffset = 25.0f;  // Средняя высота для обоих персонажей
+	TwoShot.HeightOffset = 25.0f;  // 
 	TwoShot.AngleOffset = 0.0f; // Side view
 	TwoShot.PitchAdjustment = 0.0f;
 	TwoShot.FOVOverride = 75.0f;

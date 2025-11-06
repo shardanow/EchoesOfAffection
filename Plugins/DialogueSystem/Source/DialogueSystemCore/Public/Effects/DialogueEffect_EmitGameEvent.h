@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,16 +10,8 @@
 /**
  * Dialogue Effect: Emit Game Event
  * 
- * Эмитирует событие в GameEventBus
- * Позволяет диалогам взаимодействовать с другими системами (квесты, инвентарь, и т.д.)
  * 
- * Примеры использования:
- * - Эмитировать "Dialogue.Event.NodeReached" когда достигнута определённая нода
- * - Эмитировать "NPC.Event.AffinityChange" когда игрок выбрал опцию
- * - Эмитировать любое кастомное событие для квестов
  * 
- * Dependency: НЕТ жёстких зависимостей!
- * Работает через GameEventBus (если плагин включён)
  */
 UCLASS(BlueprintType, meta = (DisplayName = "Emit Game Event"))
 class DIALOGUESYSTEMCORE_API UDialogueEffect_EmitGameEvent : public UDialogueEffect
@@ -75,8 +67,6 @@ public:
 /**
  * Dialogue Effect: Emit Multiple Game Events
  * 
- * Эмитирует несколько событий одновременно
- * Удобно для сложных сценариев
  */
 UCLASS(BlueprintType, meta = (DisplayName = "Emit Multiple Game Events"))
 class DIALOGUESYSTEMCORE_API UDialogueEffect_EmitMultipleGameEvents : public UDialogueEffect

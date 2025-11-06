@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Integration/RelationshipSystemBridge.h"
 
@@ -14,19 +14,19 @@ void URelationshipSystemBridge::OnMemoryEventReceived(const FGameEvent& Event)
 		return;
 	}
 
-	// Проверяем конфигурацию
+
 	if (!MappingConfig || !MappingConfig->bEnableMemoryToRelationship)
 	{
 		return;
 	}
 
-	// Извлекаем данные из события
+
 	FString MemoryType = Event.Payload.FindRef("MemoryType");
 	float Importance = FCString::Atof(*Event.Payload.FindRef("Importance"));
 	float Freshness = FCString::Atof(*Event.Payload.FindRef("Freshness"));
 	FString Emotion = Event.Payload.FindRef("Emotion");
 
-	// Проверяем через конфиг, должна ли память влиять
+
 	if (!MappingConfig->ShouldMemoryAffectRelationship(Importance, Freshness))
 	{
 		UE_LOG(LogRelationshipSystem, Verbose, 
@@ -34,7 +34,7 @@ void URelationshipSystemBridge::OnMemoryEventReceived(const FGameEvent& Event)
 		return;
 	}
 
-	// Конвертируем через data-driven маппинг
+
 	ConvertMemoryToRelationshipChange(
 		Event.Instigator, 
 		Event.Target,
@@ -60,11 +60,11 @@ void URelationshipSystemBridge::ConvertMemoryToRelationshipChange(
 		return;
 	}
 
-	// 1. Найти действие для типа памяти (через Data Asset!)
+
 	FGameplayTag ActionTag;
 	if (MappingConfig->FindActionForMemoryType(MemoryType, Importance, ActionTag))
 	{
-		// Выполнить действие (вся логика в DA_Action_*)
+
 
 		RelComp->ExecuteAction(Target, ActionTag);
 		
@@ -73,7 +73,7 @@ void URelationshipSystemBridge::ConvertMemoryToRelationshipChange(
 			*MemoryType, *ActionTag.ToString());
 	}
 
-	// 2. Применить эмоциональные модификаторы (тоже через Data Asset!)
+
 	ApplyEmotionModifiers(NPC, Target, Emotion, Importance);
 }
 
@@ -92,11 +92,11 @@ void URelationshipSystemBridge::ApplyEmotionModifiers(
 		return;
 	}
 
-	// Получаем модификаторы из Data Asset
+
 	TArray<FEmotionDimensionModifier> Modifiers = 
 		MappingConfig->GetModifiersForEmotion(Emotion);
 
-	// Применяем каждый модификатор
+
 	for (const FEmotionDimensionModifier& Modifier : Modifiers)
 	{
 		if (!Modifier.DimensionTag.IsValid())
@@ -104,14 +104,14 @@ void URelationshipSystemBridge::ApplyEmotionModifiers(
 			continue;
 		}
 
-		// Вычисляем delta на основе важности и множителя
+
 		float Delta = Importance * Modifier.ImportanceMultiplier;
 		if (!Modifier.bPositiveInfluence)
 		{
 			Delta = -Delta;
 		}
 
-		// Применяем к dimension
+
 		RelComp->ModifyDimensionValue(Target, Modifier.DimensionTag, Delta);
 
 		UE_LOG(LogRelationshipSystem, Verbose,

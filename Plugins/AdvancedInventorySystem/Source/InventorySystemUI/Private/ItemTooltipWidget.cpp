@@ -233,7 +233,7 @@ void UItemTooltipWidget::UpdateWidgets()
 		if (ItemData->bIsUsable) TypeInfo.Add("Usable");
 		if (ItemData->bIsEquippable) TypeInfo.Add("Equippable");
 		
-		FString TypeString = FString::Join(TypeInfo, TEXT(" • "));
+		FString TypeString = FString::Join(TypeInfo, TEXT(" | "));
 		ItemTypeText->SetText(FText::FromString(TypeString));
 	}
 

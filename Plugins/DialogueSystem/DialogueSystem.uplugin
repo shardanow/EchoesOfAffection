@@ -71,6 +71,11 @@
 			"Name": "GameEventBus",
 			"Enabled": true,
 			"Optional": true
+		},
+		{
+			"Name": "QuestSystem",
+			"Enabled": true,
+			"Optional": true
 		}
 	]
 }

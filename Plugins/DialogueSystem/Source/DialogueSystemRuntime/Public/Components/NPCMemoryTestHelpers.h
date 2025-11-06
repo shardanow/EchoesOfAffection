@@ -228,7 +228,7 @@ public:
 		// —имулируем decay на указанное количество дней
 		float SecondsPerDay = 86400.0f;
 		float TotalSeconds = Days * SecondsPerDay;
-		float UpdateInterval = 60.0f; // ќбновл€ем каждую минуту симул€ции
+		float UpdateInterval = 60.0f; // Update every minute of in-game time
 		
 		int32 Updates = FMath::CeilToInt(TotalSeconds / UpdateInterval);
 

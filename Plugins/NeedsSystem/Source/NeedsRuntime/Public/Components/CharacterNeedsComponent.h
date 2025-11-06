@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -154,7 +154,7 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Needs")
 	TArray<FGameplayTag> GetAllNeedTags() const;
 
-	/** Get gameplay tags (для интеграции с другими системами) */
+	/** Get gameplay tags () */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Needs")
 	FGameplayTagContainer GetGameplayTags() const { return GameplayTags; }
 
@@ -184,7 +184,7 @@ public:
 	FOnModifierRemoved OnModifierRemoved;
 
 	// ========================================
-	// INTERNAL UPDATE (вызывается Subsystem)
+
 	// ========================================
 
 	/** Update needs simulation (called by subsystem) */

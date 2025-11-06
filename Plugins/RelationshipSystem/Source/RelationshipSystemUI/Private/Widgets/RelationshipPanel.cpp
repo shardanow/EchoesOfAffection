@@ -19,12 +19,31 @@
 
 FGameplayTag URelationshipPanel::GetCurrentState() const
 {
-	if (!SubjectComponent || !Target)
+	if (!Subject || !Target)
 	{
 		return FGameplayTag();
 	}
 
-	return SubjectComponent->GetCurrentState(Target);
+	// ? FIX: Use GameInstance->GetSubsystem for GameInstanceSubsystem
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return FGameplayTag();
+	}
+
+	UGameInstance* GameInstance = World->GetGameInstance();
+	if (!GameInstance)
+	{
+		return FGameplayTag();
+	}
+
+	URelationshipSubsystem* Subsystem = GameInstance->GetSubsystem<URelationshipSubsystem>();
+	if (!Subsystem)
+	{
+		return FGameplayTag();
+	}
+
+	return Subsystem->GetCurrentState(Subject, Target);
 }
 
 FText URelationshipPanel::GetStateDisplayName() const
@@ -36,16 +55,20 @@ FText URelationshipPanel::GetStateDisplayName() const
 		return FText::FromString(TEXT("No State"));
 	}
 
-	// Try to get display name from database
-	if (SubjectComponent)
+	// ? FIX: Use GameInstance subsystem
+	UWorld* World = GetWorld();
+	if (World)
 	{
-		if (URelationshipSubsystem* Subsystem = SubjectComponent->GetRelationshipSubsystem())
+		if (UGameInstance* GameInstance = World->GetGameInstance())
 		{
-			if (URelationshipDatabase* Database = Subsystem->GetDatabase())
+			if (URelationshipSubsystem* Subsystem = GameInstance->GetSubsystem<URelationshipSubsystem>())
 			{
-				if (URelationshipState* State = Database->FindState(StateTag))
+				if (URelationshipDatabase* Database = Subsystem->GetDatabase())
 				{
-					return State->GetDisplayName();
+					if (URelationshipState* State = Database->FindState(StateTag))
+					{
+						return State->GetDisplayName();
+					}
 				}
 			}
 		}
@@ -80,6 +103,34 @@ void URelationshipPanel::NativeRefreshDisplay()
 {
 	Super::NativeRefreshDisplay();
 
+	// ? FIX: Ensure relationship exists BEFORE creating dimension bars!
+	if (Subject && Target)
+	{
+		UWorld* World = GetWorld();
+		if (World)
+		{
+			if (UGameInstance* GameInstance = World->GetGameInstance())
+			{
+				if (URelationshipSubsystem* Subsystem = GameInstance->GetSubsystem<URelationshipSubsystem>())
+				{
+					// ? Check if relationship exists
+					if (!Subsystem->HasRelationship(Subject, Target))
+					{
+						UE_LOG(LogTemp, Warning, TEXT("RelationshipPanel: Relationship doesn't exist! Creating it now..."));
+						UE_LOG(LogTemp, Warning, TEXT("  Subject: %s"), *GetNameSafe(Subject));
+						UE_LOG(LogTemp, Warning, TEXT("  Target: %s"), *GetNameSafe(Target));
+						
+						// ? Create relationship with default profiles
+						// This is safe - Subsystem will handle profile loading
+						Subsystem->CreateRelationship(Subject, Target, nullptr, nullptr);
+						
+						UE_LOG(LogTemp, Log, TEXT("RelationshipPanel: Relationship created successfully!"));
+					}
+				}
+			}
+		}
+	}
+
 	// Recreate dimension bars
 	CreateDimensionBars();
 
@@ -99,18 +150,32 @@ void URelationshipPanel::CreateDimensionBars()
 
 	UE_LOG(LogTemp, Log, TEXT("RelationshipPanel::CreateDimensionBars - START"));
 	UE_LOG(LogTemp, Log, TEXT("  DimensionContainer: %s"), DimensionContainer ? TEXT("Valid") : TEXT("NULL"));
-	UE_LOG(LogTemp, Log, TEXT("  SubjectComponent: %s"), SubjectComponent ? TEXT("Valid") : TEXT("NULL"));
 	UE_LOG(LogTemp, Log, TEXT("  DimensionBarClass: %s"), DimensionBarClass ? TEXT("Valid") : TEXT("NULL"));
 	UE_LOG(LogTemp, Log, TEXT("  Subject: %s"), *GetNameSafe(Subject));
 	UE_LOG(LogTemp, Log, TEXT("  Target: %s"), *GetNameSafe(Target));
 
-	if (!DimensionContainer || !SubjectComponent || !DimensionBarClass)
+	if (!DimensionContainer || !DimensionBarClass || !Subject || !Target)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("RelationshipPanel::CreateDimensionBars - ABORTED: Missing required components"));
 		return;
 	}
 
-	URelationshipSubsystem* Subsystem = SubjectComponent->GetRelationshipSubsystem();
+	// ? FIX: Use GameInstance->GetSubsystem for GameInstanceSubsystem
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("RelationshipPanel::CreateDimensionBars - ABORTED: No World"));
+		return;
+	}
+
+	UGameInstance* GameInstance = World->GetGameInstance();
+	if (!GameInstance)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("RelationshipPanel::CreateDimensionBars - ABORTED: No GameInstance"));
+		return;
+	}
+
+	URelationshipSubsystem* Subsystem = GameInstance->GetSubsystem<URelationshipSubsystem>();
 	if (!Subsystem)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("RelationshipPanel::CreateDimensionBars - ABORTED: No RelationshipSubsystem"));
@@ -150,7 +215,8 @@ void URelationshipPanel::CreateDimensionBars()
 		// Check if dimension has value (if filtering)
 		if (!bShowAllDimensions)
 		{
-			float Value = SubjectComponent->GetDimensionValue(Target, DimTag);
+			// ? FIX: Use Subsystem directly
+			float Value = Subsystem->GetDimensionValue(Subject, Target, DimTag);
 			UE_LOG(LogTemp, Log, TEXT("    Current value: %.2f"), Value);
 			
 			if (FMath::IsNearlyZero(Value))
@@ -291,27 +357,71 @@ void URelationshipPanel::SubscribeToEvents()
 					{
 						AActor* EventSubject = Payload.InstigatorActor.Get();
 						AActor* EventTarget = Payload.TargetActor.Get();
+						
+						UE_LOG(LogTemp, Warning, TEXT("RelationshipPanel: Relationship.DimensionChanged event received!"));
+						UE_LOG(LogTemp, Warning, TEXT("  EventSubject: %s"), *GetNameSafe(EventSubject));
+						UE_LOG(LogTemp, Warning, TEXT("  EventTarget: %s"), *GetNameSafe(EventTarget));
+						UE_LOG(LogTemp, Warning, TEXT("  Panel->Subject: %s"), *GetNameSafe(Panel->Subject));
+						UE_LOG(LogTemp, Warning, TEXT("  Panel->Target: %s"), *GetNameSafe(Panel->Target));
+						UE_LOG(LogTemp, Warning, TEXT("  StringParam (Dimension): %s"), *Payload.StringParam.ToString());
+						UE_LOG(LogTemp, Warning, TEXT("  FloatParam (Value): %.2f"), Payload.FloatParam);
+						
 						if (Panel->Subject == EventSubject && Panel->Target == EventTarget)
 						{
+							UE_LOG(LogTemp, Warning, TEXT("  ? MATCH! This event is for us!"));
+							
 							FName ChangedDimension = Payload.StringParam;
 							bool bRefreshed = false;
+							
+							UE_LOG(LogTemp, Warning, TEXT("  Checking %d dimension bars..."), Panel->SpawnedDimensionBars.Num());
+							
 							for (URelationshipDimensionBar* Bar : Panel->SpawnedDimensionBars)
 							{
-								if (Bar && Bar->DimensionTag.GetTagName() == ChangedDimension)
+								if (Bar)
 								{
-									Bar->RefreshDisplay();
-									bRefreshed = true;
-									break;
+									FName BarDimensionName = Bar->DimensionTag.GetTagName();
+									UE_LOG(LogTemp, Warning, TEXT("    Bar dimension: %s (vs %s)"), 
+										*BarDimensionName.ToString(), *ChangedDimension.ToString());
+									
+									if (BarDimensionName == ChangedDimension)
+									{
+										UE_LOG(LogTemp, Warning, TEXT("    ? REFRESHING dimension bar: %s"), *ChangedDimension.ToString());
+										Bar->RefreshDisplay();
+										bRefreshed = true;
+										break;
+									}
 								}
 							}
+							
 							if (!bRefreshed)
 							{
+								UE_LOG(LogTemp, Warning, TEXT("  ?? No matching bar found, refreshing entire panel"));
 								Panel->RefreshDisplay();
 							}
+							else
+							{
+								UE_LOG(LogTemp, Warning, TEXT("  ? Dimension bar refreshed successfully!"));
+							}
 						}
+						else
+						{
+							UE_LOG(LogTemp, Verbose, TEXT("  ? Event not for us (different actors)"));
+						}
+					}
+					else
+					{
+						UE_LOG(LogTemp, Warning, TEXT("RelationshipPanel: WeakThis invalid!"));
 					}
 				})
 			);
+			
+			UE_LOG(LogTemp, Log, TEXT("RelationshipPanel: Subscribed to Relationship.DimensionChanged"));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("RelationshipPanel: 'Relationship.DimensionChanged' GameplayTag NOT FOUND!"));
+			UE_LOG(LogTemp, Error, TEXT("  Add it to DefaultGameplayTags.ini:"));
+			UE_LOG(LogTemp, Error, TEXT("  +GameplayTagList=(Tag=\"Relationship.DimensionChanged\",DevComment=\"Emitted when relationship dimension value changes\")"));
 		}
 
 		// Subscribe to time events (for decay)

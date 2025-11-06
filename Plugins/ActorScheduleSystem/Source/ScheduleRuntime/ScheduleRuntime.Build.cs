@@ -26,5 +26,16 @@ public class ScheduleRuntime : ModuleRules
 			{
 			}
 		);
+
+		// Optional dependency on GameEventBus (soft integration with DialogueSystem)
+		if (Target.bBuildAllModules || System.IO.Directory.Exists(System.IO.Path.Combine(Target.ProjectFile.Directory.FullName, "Plugins", "GameEventBus")))
+		{
+			PrivateDependencyModuleNames.Add("GameEventBus");
+			PublicDefinitions.Add("WITH_GAMEEVENTBUS=1");
+		}
+		else
+		{
+			PublicDefinitions.Add("WITH_GAMEEVENTBUS=0");
+		}
 	}
 }

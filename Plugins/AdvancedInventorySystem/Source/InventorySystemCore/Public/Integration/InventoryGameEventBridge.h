@@ -10,18 +10,18 @@
 /**
  * Inventory System -> Game Event Bus Bridge
  * 
- * Упрощает интеграцию системы инвентаря с GameEventBus
- * Предоставляет удобные функции для эмиссии событий
+ * Connects Inventory events to GameEventBus
+ * Automatically emits game events for inventory actions
  * 
- * События инвентаря:
- * - Inventory.Event.ItemAcquired - получен предмет
- * - Inventory.Event.ItemUsed - использован предмет
- * - Inventory.Event.ItemDropped - выброшен предмет
- * - Inventory.Event.ItemCrafted - создан предмет
- * - Inventory.Event.ItemSold - продан предмет
- * - Inventory.Event.ItemBought - куплен предмет
+ * Available events:
+ * - Inventory.Event.ItemAcquired - Item acquired
+ * - Inventory.Event.ItemUsed - Item used
+ * - Inventory.Event.ItemDropped - Item dropped
+ * - Inventory.Event.ItemCrafted - Item crafted
+ * - Inventory.Event.ItemSold - Item sold
+ * - Inventory.Event.ItemBought - Item bought
  * 
- * Эти события автоматически подхватываются квестовой системой!
+ * All events carry additional metadata payload!
  */
 UCLASS()
 class INVENTORYSYSTEMCORE_API UInventoryGameEventBridge : public UBlueprintFunctionLibrary

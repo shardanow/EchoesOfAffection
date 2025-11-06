@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+пїњ// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,7 +11,6 @@
 class UDialogueSessionContext;
 
 /**
- * Ѕазовый класс эффекта диалога
  * v1.3: Added Reverse() support for full undo
  */
 UCLASS(Abstract, Blueprintable, EditInlineNew, DefaultToInstanced)
@@ -20,7 +19,7 @@ class DIALOGUESYSTEMCORE_API UDialogueEffect : public UObject
     GENERATED_BODY()
 
 public:
-    /** ѕрименить эффект */
+
     UFUNCTION(BlueprintNativeEvent, Category = "Dialogue|Effect")
     void Execute(UDialogueSessionContext* Context);
     virtual void Execute_Implementation(UDialogueSessionContext* Context) {}
@@ -34,12 +33,12 @@ public:
     UFUNCTION(BlueprintPure, Category = "Dialogue|Effect")
     virtual bool SupportsReverse() const { return bSupportsReverse; }
 
-    /** ќписание эффекта дл€ UI */
+
     UFUNCTION(BlueprintNativeEvent, Category = "Dialogue|Effect")
     FText GetDisplayText() const;
     virtual FText GetDisplayText_Implementation() const { return FText::GetEmpty(); }
 
-    /** »конка дл€ UI (опционально) */
+
     UFUNCTION(BlueprintNativeEvent, Category = "Dialogue|Effect")
     UTexture2D* GetIcon() const;
     virtual UTexture2D* GetIcon_Implementation() const { return nullptr; }
@@ -51,7 +50,6 @@ protected:
 };
 
 /**
- * Ёффект: изменение Affinity
  * v1.3: Supports reversal
  */
 UCLASS(BlueprintType)
@@ -74,7 +72,6 @@ public:
 };
 
 /**
- * Ёффект: изменение Trust
  * v1.3: Supports reversal
  */
 UCLASS(BlueprintType)
@@ -97,7 +94,6 @@ public:
 };
 
 /**
- * Ёффект: добавить/удалить предмет
  * v1.3: Supports reversal
  */
 UCLASS(BlueprintType)
@@ -112,7 +108,7 @@ public:
     FName ItemId;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect")
-    int32 DeltaCount = 1; // отрицательное значение = удалить
+    int32 DeltaCount = 1; 
 
     virtual void Execute_Implementation(UDialogueSessionContext* Context) override;
     virtual void Reverse_Implementation(UDialogueSessionContext* Context) override;
@@ -120,7 +116,6 @@ public:
 };
 
 /**
- * Ёффект: изменить валюту
  * v1.3: Supports reversal
  */
 UCLASS(BlueprintType)
@@ -140,7 +135,6 @@ public:
 };
 
 /**
- * Ёффект: установить флаг пам€ти
  * v1.3: Supports reversal (stores old value)
  */
 UCLASS(BlueprintType)
@@ -171,7 +165,6 @@ private:
 };
 
 /**
- * Ёффект: добавить WorldState тег
  * v1.3: Supports reversal
  */
 UCLASS(BlueprintType)
@@ -191,7 +184,6 @@ public:
 };
 
 /**
- * Ёффект: удалить WorldState тег
  * v1.3: Supports reversal
  */
 UCLASS(BlueprintType)
@@ -211,7 +203,6 @@ public:
 };
 
 /**
- * Ёффект: начать квест
  * v1.3: Does NOT support reversal (one-way operation)
  */
 UCLASS(BlueprintType)
@@ -230,7 +221,6 @@ public:
 };
 
 /**
- * Ёффект: завершить квест
  * v1.3: Does NOT support reversal (one-way operation)
  */
 UCLASS(BlueprintType)
@@ -249,7 +239,6 @@ public:
 };
 
 /**
- * Ёффект: установить кастомную переменную
  * v1.3: Supports reversal (stores old value)
  */
 UCLASS(BlueprintType)
@@ -277,7 +266,6 @@ private:
 };
 
 /**
- *  омпозитный эффект (последовательность)
  * v1.3: Supports reversal if all sub-effects support it
  */
 UCLASS(BlueprintType)
@@ -298,7 +286,6 @@ public:
 };
 
 /**
- * √лавный класс дл€ выполнени€ эффектов
  * 
  * v1.3: Added effect reversal support
  * v1.3.1: Parsing moved to UDialogueEffectParser (SRP principle)
@@ -315,11 +302,11 @@ class DIALOGUESYSTEMCORE_API UDialogueEffectExecutor : public UObject
     GENERATED_BODY()
 
 public:
-    /** ¬ыполнить список эффектов */
+
     UFUNCTION(BlueprintCallable, Category = "Dialogue|Effects")
     void ExecuteEffects(const TArray<UDialogueEffect*>& Effects, UDialogueSessionContext* Context);
 
-    /** ¬ыполнить единичный эффект */
+
     UFUNCTION(BlueprintCallable, Category = "Dialogue|Effects")
     void ExecuteEffect(UDialogueEffect* Effect, UDialogueSessionContext* Context);
 

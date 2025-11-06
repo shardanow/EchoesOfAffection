@@ -553,23 +553,41 @@ int32 URelationshipSubsystem::GetTraitStackCount(AActor* Subject, AActor* Target
 
 bool URelationshipSubsystem::CanExecuteAction(AActor* Subject, AActor* Target, FGameplayTag ActionTag) const
 {
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("============================================"));
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("CanExecuteAction CALLED"));
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("  Subject: %s"), *GetNameSafe(Subject));
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("  Target: %s"), *GetNameSafe(Target));
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("  ActionTag: %s"), *ActionTag.ToString());
+
 	const FRelationshipData* RelData = GetRelationship(Subject, Target);
 	if (!RelData)
 	{
+		UE_LOG(LogRelationshipSystem, Error, TEXT("❌ FAILED: Relationship data not found!"));
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("============================================"));
 		return false;
 	}
+
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("✅ Relationship data found"));
 
 	URelationshipDatabase* Database = GetDatabase();
 	if (!Database)
 	{
+		UE_LOG(LogRelationshipSystem, Error, TEXT("❌ FAILED: Database not found!"));
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("============================================"));
 		return false;
 	}
+
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("✅ Database found: %s"), *Database->GetName());
 
 	URelationshipAction* Action = Database->FindAction(ActionTag);
 	if (!Action)
 	{
+		UE_LOG(LogRelationshipSystem, Error, TEXT("❌ FAILED: Action not found in database!"));
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("============================================"));
 		return false;
 	}
+
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("✅ Action found: %s"), *Action->GetName());
 
 	// Build dimension values
 	TMap<FGameplayTag, float> DimensionValues;
@@ -578,71 +596,161 @@ bool URelationshipSubsystem::CanExecuteAction(AActor* Subject, AActor* Target, F
 		DimensionValues.Add(Pair.Key, Pair.Value.Value);
 	}
 
-	// Check costs and rules
-	if (!Action->CanExecute(DimensionValues, Database))
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("📊 Dimension values: %d"), DimensionValues.Num());
+	for (const auto& Pair : DimensionValues)
 	{
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("    %s = %.2f"), *Pair.Key.ToString(), Pair.Value);
+	}
+
+	// Check costs and rules
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("🔍 Calling Action->CanExecute..."));
+	bool bCanExecute = Action->CanExecute(DimensionValues, Database);
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("  Action->CanExecute returned: %s"), bCanExecute ? TEXT("TRUE") : TEXT("FALSE"));
+	
+	if (!bCanExecute)
+	{
+		UE_LOG(LogRelationshipSystem, Error, TEXT("❌ FAILED: Action->CanExecute() returned FALSE!"));
+		UE_LOG(LogRelationshipSystem, Error, TEXT("  Check Action costs and RequiredRules!"));
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("============================================"));
 		return false;
 	}
 
 	// Check cooldown and max uses
 	if (const FRelationshipActionInstance* ActionInst = RelData->Actions.Find(ActionTag))
 	{
-		if (ActionInst->IsOnCooldown(GetCurrentGameTime(), Action->Cooldown))
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("📜 Action instance found (previously executed)"));
+		
+		bool bOnCooldown = ActionInst->IsOnCooldown(GetCurrentGameTime(), Action->Cooldown);
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("  IsOnCooldown: %s"), bOnCooldown ? TEXT("TRUE") : TEXT("FALSE"));
+		
+		if (bOnCooldown)
 		{
+			UE_LOG(LogRelationshipSystem, Error, TEXT("❌ FAILED: Action is on cooldown!"));
+			UE_LOG(LogRelationshipSystem, Warning, TEXT("============================================"));
 			return false;
 		}
-		if (ActionInst->IsMaxUsesReached(Action->MaxUses))
+		
+		bool bMaxUsesReached = ActionInst->IsMaxUsesReached(Action->MaxUses);
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("  IsMaxUsesReached: %s"), bMaxUsesReached ? TEXT("TRUE") : TEXT("FALSE"));
+		
+		if (bMaxUsesReached)
 		{
+			UE_LOG(LogRelationshipSystem, Error, TEXT("❌ FAILED: Max uses reached!"));
+			UE_LOG(LogRelationshipSystem, Warning, TEXT("============================================"));
 			return false;
 		}
 	}
+	else
+	{
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("📜 Action instance NOT found (first time execution)"));
+	}
 
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("✅ CanExecuteAction SUCCEEDED!"));
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("============================================"));
 	return true;
 }
 
 bool URelationshipSubsystem::ExecuteAction(AActor* Subject, AActor* Target, FGameplayTag ActionTag)
 {
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("============================================"));
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("RelationshipSubsystem::ExecuteAction CALLED"));
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("  Subject: %s"), *GetNameSafe(Subject));
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("  Target: %s"), *GetNameSafe(Target));
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("  ActionTag: %s"), *ActionTag.ToString());
+
 	if (!CanExecuteAction(Subject, Target, ActionTag))
 	{
+		UE_LOG(LogRelationshipSystem, Error, TEXT("❌ CanExecuteAction returned FALSE!"));
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("============================================"));
 		return false;
 	}
 
 	FRelationshipData* RelData = GetRelationshipMutable(Subject, Target);
 	if (!RelData)
 	{
+		UE_LOG(LogRelationshipSystem, Error, TEXT("❌ Relationship data not found!"));
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("============================================"));
 		return false;
 	}
 
 	URelationshipDatabase* Database = GetDatabase();
 	if (!Database)
 	{
+		UE_LOG(LogRelationshipSystem, Error, TEXT("❌ Database not found!"));
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("============================================"));
 		return false;
 	}
 
 	URelationshipAction* Action = Database->FindAction(ActionTag);
 	if (!Action)
 	{
+		UE_LOG(LogRelationshipSystem, Error, TEXT("❌ Action not found in database: %s"), *ActionTag.ToString());
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("============================================"));
 		return false;
 	}
+
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("✅ Action found: %s"), *Action->GetName());
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("  Action has %d costs"), Action->Costs.Num());
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("  Action has %d effects"), Action->Effects.Num());
 
 	// Apply costs
 	for (const FRelationshipActionCost& Cost : Action->Costs)
 	{
 		if (Cost.ConsumedValue > 0.0f)
 		{
+			UE_LOG(LogRelationshipSystem, Warning, TEXT("  Applying cost: %s -= %.2f"), 
+				*Cost.DimensionTag.ToString(), Cost.ConsumedValue);
 			ModifyDimensionValue(Subject, Target, Cost.DimensionTag, -Cost.ConsumedValue);
 		}
 	}
 
 	// Apply effects
-	for (const FRelationshipActionEffect& Effect : Action->Effects)
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("📝 Processing %d effects..."), Action->Effects.Num());
+	
+	int32 AppliedEffects = 0;
+	int32 SkippedEffects = 0;
+	
+	for (int32 i = 0; i < Action->Effects.Num(); i++)
 	{
-		if (Effect.RollSuccess())
+		const FRelationshipActionEffect& Effect = Action->Effects[i];
+		
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("  Effect[%d]:"), i);
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("    DimensionTag: %s (Valid: %s)"), 
+			*Effect.DimensionTag.ToString(), Effect.DimensionTag.IsValid() ? TEXT("YES") : TEXT("NO"));
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("    BaseValue: %.2f"), Effect.BaseValue);
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("    RandomVariance: %.2f"), Effect.RandomVariance);
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("    SuccessProbability: %.2f"), Effect.SuccessProbability);
+		
+		if (!Effect.DimensionTag.IsValid())
+		{
+			UE_LOG(LogRelationshipSystem, Error, TEXT("    ❌ SKIPPED: DimensionTag is INVALID!"));
+			SkippedEffects++;
+			continue;
+		}
+		
+		bool bRollSuccess = Effect.RollSuccess();
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("    RollSuccess: %s"), bRollSuccess ? TEXT("YES") : TEXT("NO"));
+		
+		if (bRollSuccess)
 		{
 			float FinalValue = Effect.CalculateFinalValue();
+			UE_LOG(LogRelationshipSystem, Warning, TEXT("    ✅ APPLYING: Dimension=%s, Delta=%.2f"), 
+				*Effect.DimensionTag.ToString(), FinalValue);
+			
 			ModifyDimensionValue(Subject, Target, Effect.DimensionTag, FinalValue);
+			AppliedEffects++;
+		}
+		else
+		{
+			UE_LOG(LogRelationshipSystem, Warning, TEXT("    ⚠️ SKIPPED: Probability check failed"));
+			SkippedEffects++;
 		}
 	}
+
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("📊 Effects summary:"));
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("  Total: %d"), Action->Effects.Num());
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("  Applied: %d"), AppliedEffects);
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("  Skipped: %d"), SkippedEffects);
 
 	// Record execution
 	FRelationshipActionInstance& ActionInst = RelData->Actions.FindOrAdd(ActionTag, FRelationshipActionInstance(ActionTag));
@@ -675,8 +783,8 @@ bool URelationshipSubsystem::ExecuteAction(AActor* Subject, AActor* Target, FGam
 
 	BroadcastActionExecuted(Subject, Target, ActionTag);
 
-	UE_LOG(LogRelationshipSystem, Verbose, TEXT("Executed action %s: %s -> %s"),
-		*ActionTag.ToString(), *Subject->GetName(), *Target->GetName());
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("✅ ExecuteAction COMPLETED"));
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("============================================"));
 
 	return true;
 }
@@ -995,7 +1103,8 @@ float URelationshipSubsystem::ApplyDimensionChangeWithModifiers(FRelationshipDat
 
 void URelationshipSubsystem::BroadcastDimensionChanged(AActor* Subject, AActor* Target, FGameplayTag DimensionTag, float NewValue)
 {
-	UE_LOG(LogRelationshipSystem, Log, TEXT("BroadcastDimensionChanged: %s -> %s, Dimension=%s, Value=%.2f"),
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("============================================"));
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("BroadcastDimensionChanged: %s -> %s, Dimension=%s, Value=%.2f"),
 		*GetNameSafe(Subject), *GetNameSafe(Target), *DimensionTag.ToString(), NewValue);
 
 	OnDimensionChanged.Broadcast(Subject, Target, DimensionTag, NewValue);
@@ -1005,23 +1114,37 @@ void URelationshipSubsystem::BroadcastDimensionChanged(AActor* Subject, AActor* 
 	
 	if (!DimensionChangedEventTag.IsValid())
 	{
-		UE_LOG(LogRelationshipSystem, Warning, TEXT("Event tag 'Relationship.DimensionChanged' not found in GameplayTags!"));
+		UE_LOG(LogRelationshipSystem, Error, TEXT("❌ Event tag 'Relationship.DimensionChanged' NOT FOUND in GameplayTags!"));
+		UE_LOG(LogRelationshipSystem, Error, TEXT("Add to DefaultGameplayTags.ini:"));
+		UE_LOG(LogRelationshipSystem, Error, TEXT("+GameplayTagList=(Tag=\"Relationship.DimensionChanged\",DevComment=\"Fired when relationship dimension changes\")"));
 		// Try alternate tag
 		DimensionChangedEventTag = FGameplayTag::RequestGameplayTag(FName("Relationship.Event.DimensionChanged"), false);
 	}
 
 	if (DimensionChangedEventTag.IsValid())
 	{
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("✅ Event tag valid: %s"), *DimensionChangedEventTag.ToString());
+		
 		// Send to GameEventBus if available
 		TMap<FName, FString> Payload;
 		Payload.Add("Dimension", DimensionTag.ToString());
 		Payload.Add("Value", FString::SanitizeFloat(NewValue));
+		
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("📤 Calling SendGameEvent..."));
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("  Payload.Dimension: %s"), *DimensionTag.ToString());
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("  Payload.Value: %.2f"), NewValue);
+		
 		SendGameEvent(DimensionChangedEventTag, Subject, Target, Payload);
+		
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("✅ SendGameEvent completed!"));
 	}
 	else
 	{
-		UE_LOG(LogRelationshipSystem, Error, TEXT("Could not find 'Relationship.DimensionChanged' or 'Relationship.Event.DimensionChanged' GameplayTag!"));
+		UE_LOG(LogRelationshipSystem, Error, TEXT("❌ Could not find 'Relationship.DimensionChanged' or 'Relationship.Event.DimensionChanged' GameplayTag!"));
+		UE_LOG(LogRelationshipSystem, Error, TEXT("❌ UI WILL NOT UPDATE!"));
 	}
+	
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("============================================"));
 }
 
 void URelationshipSubsystem::BroadcastStateTransitioned(AActor* Subject, AActor* Target, FGameplayTag OldState, FGameplayTag NewState)

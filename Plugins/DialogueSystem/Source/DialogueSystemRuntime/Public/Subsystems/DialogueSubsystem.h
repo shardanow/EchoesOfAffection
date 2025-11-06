@@ -310,7 +310,15 @@ protected:
     void CancelPendingAsyncLoads();
 
     /**
-  * Extract NPC ID from actor using QuestActorComponent or fallback methods.
+     * Resolve PersonaId to AActor by searching for DialogueComponent with matching CharacterId
+     * @param PersonaId - The persona ID to search for (e.g., "Alice")
+     * @param WorldContext - World to search in
+     * @return Found actor, or nullptr
+     */
+    AActor* ResolvePersonaToActor(FName PersonaId, UWorld* WorldContext);
+
+    /**
+     * Extract NPC ID from actor using QuestActorComponent or fallback methods.
      * Priority:
      * 1. QuestActorComponent (if present)
      * 2. GameplayTags (e.g., "NPC.Lianne" -> "Lianne")
@@ -322,8 +330,8 @@ protected:
     void HandleDialogueEnded();
 
     /** Handles node changes from active runner */
-  UFUNCTION()
- void HandleNodeEntered(UDialogueNode* NewNode);
+    UFUNCTION()
+    void HandleNodeEntered(UDialogueNode* NewNode);
 
     /** Handles choice selection from active runner */
     UFUNCTION()

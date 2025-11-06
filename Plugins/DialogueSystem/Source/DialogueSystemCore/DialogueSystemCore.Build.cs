@@ -35,15 +35,14 @@ public class DialogueSystemCore : ModuleRules
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
-				// ... add private dependencies that you statically link with here ...
+				"LevelSequence",     // For Level Sequence support
+				"MovieScene"         // For sequence playback
 			}
 		);
 		
 		// Optional dependency on GameEventBus (if plugin is enabled)
-		if (Target.bBuildAllModules || System.IO.Directory.Exists(System.IO.Path.Combine(Target.ProjectFile.Directory.FullName, "Plugins", "GameEventBus")))
-		{
-			PrivateDependencyModuleNames.Add("GameEventBus");
-		}
+		PrivateDependencyModuleNames.Add("GameEventBus");
+		PublicDefinitions.Add("WITH_GAMEEVENTBUS=1");
 		
 		DynamicallyLoadedModuleNames.AddRange(
 			new string[]

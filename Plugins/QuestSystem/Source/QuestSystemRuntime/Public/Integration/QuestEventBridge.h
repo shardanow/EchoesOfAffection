@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,18 +15,18 @@ struct FQuestEventPayload;
 /**
  * Quest Event Bridge
  * 
- * Связывает GameEventBus с QuestSystem без жёстких зависимостей
  * 
- * Принцип работы:
- * 1) Инициализируется автоматически при старте Quest System
- * 2) Подписывается на нужные события из GameEventBus
- * 3) Транслирует их в QuestEventBus
  * 
- * Пример:
- * - GameEventBus эмитирует "Inventory.Event.ItemAcquired"
- * - Bridge ловит это событие
- * - Транслирует в QuestEventBus как OnItemAcquired
- * - Quest objectives получают обновление
+ * 
+ * 1) 
+ * 2) 
+ * 3) 
+ * 
+ * 
+ * - GameEventBus 
+ * - Bridge 
+ * - 
+ * - Quest objectives 
  * 
  * Dependency Direction:
  * QuestSystem -> GameEventBus (one-way, through this bridge)

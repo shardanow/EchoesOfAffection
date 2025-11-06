@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -22,12 +22,6 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDialogueEndedSignature);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnDialogueNodeChangedSignature, UDialogueNode*, NewNode, UDialogueNode*, PreviousNode);
 
 /**
- * Компонент диалога для NPC
- * Отвечает за:
- * - Хранение доступных диалогов
- * - Интеграцию с интеракцией
- * - Связь с Relationship Component
- * - Управление состоянием диалога
  * 
  * Uses Dependency Injection via IDialogueService interface
  */
@@ -58,31 +52,24 @@ public:
 protected:
     //~ Begin Configuration
 
-    /** Основной диалог NPC (fallback) */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue")
     TSoftObjectPtr<UDialogueDataAsset> DefaultDialogue;
 
-    /** Дополнительные диалоги (по условиям/контексту) */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue")
     TMap<FName, TSoftObjectPtr<UDialogueDataAsset>> ConditionalDialogues;
 
-    /** ID персонажа (для системы отношений) */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue")
     FName CharacterId;
 
-    /** Отображаемое имя персонажа */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue")
     FText DisplayName;
 
-    /** Портрет для UI */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue")
     TSoftObjectPtr<UTexture2D> Portrait;
 
-    /** Можно ли начать диалог сейчас */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue")
     bool bCanStartDialogue = true;
 
-    /** Дистанция взаимодействия */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue")
     float InteractionDistance = 300.0f;
 
@@ -90,11 +77,9 @@ protected:
 
     //~ Begin Runtime State
 
-    /** Текущий Runner (если диалог активен) */
     UPROPERTY(Transient)
     TObjectPtr<UDialogueRunner> ActiveRunner;
 
-    /** Предыдущая нода (для отслеживания изменений) */
     UPROPERTY(Transient)
     TObjectPtr<UDialogueNode> PreviousNode;
 
@@ -106,11 +91,9 @@ protected:
     UPROPERTY(Transient)
     TObjectPtr<UNPCMemoryComponent> MemoryComp;
 
-    /** Последний Context */
     UPROPERTY(Transient)
     TObjectPtr<UDialogueSessionContext> LastContext;
 
-    /** Cooldown до следующего диалога */
     UPROPERTY(Transient)
     float DialogueCooldown = 0.0f;
 
@@ -133,31 +116,24 @@ public:
 
     //~ Begin Public API
 
-    /** Начать диалог с этим NPC */
     UFUNCTION(BlueprintCallable, Category = "Dialogue")
     bool StartDialogue(AActor* Initiator);
 
-    /** Выбрать подходящий диалог на основе контекста */
     UFUNCTION(BlueprintCallable, Category = "Dialogue")
     UDialogueDataAsset* SelectDialogue(const UDialogueSessionContext* Context);
 
-    /** Получить Relationship Component */
     UFUNCTION(BlueprintPure, Category = "Dialogue")
     URelationshipComponent* GetRelationshipComponent() const { return RelationshipComp; }
 
-    /** Получить активный Runner */
     UFUNCTION(BlueprintPure, Category = "Dialogue")
     UDialogueRunner* GetActiveRunner() const { return ActiveRunner; }
 
-    /** Диалог активен? */
     UFUNCTION(BlueprintPure, Category = "Dialogue")
     bool IsInDialogue() const { return ActiveRunner != nullptr; }
 
-    /** Установить cooldown */
     UFUNCTION(BlueprintCallable, Category = "Dialogue")
     void SetDialogueCooldown(float Seconds) { DialogueCooldown = Seconds; }
 
-    /** Получить Memory Component */
     UFUNCTION(BlueprintPure, Category = "Dialogue")
     UNPCMemoryComponent* GetMemoryComponent() const { return MemoryComp; }
 
@@ -165,17 +141,12 @@ public:
 
 protected:
     /**
-     * Получить сервис диалогов через внедрение зависимостей
-     * Поддерживает декуплирование на основе интерфейсов
-     * @return Экземпляр DialogueService или nullptr
      */
     IDialogueService* GetDialogueService() const;
 
-    /** Callback: диалог завершён */
     UFUNCTION()
     void HandleDialogueEnded();
 
-    /** Callback: переход на новую ноду */
     UFUNCTION()
     void HandleNodeEntered(UDialogueNode* NewNode);
 };

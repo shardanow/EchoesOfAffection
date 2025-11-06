@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -95,7 +95,7 @@ private:
     /** Show debug info on screen */
   void ShowDebugInfo(const FString& Message, const FColor& Color);
 
-    // ? НОВОЕ: Уникальный ID зоны в MusicManager
+
     int32 RegisteredZoneID = -1;
 
 #if WITH_EDITOR

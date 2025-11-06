@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Integration/TimeSystemGameEventEmitter.h"
 #include "GameEventBusSubsystem.h"
@@ -35,7 +35,7 @@ void UTimeSystemGameEventEmitter::BeginPlay()
 	if (bEmitEvents)
 	{
 #if TIMEOFDAYSYSTEM_AVAILABLE
-		// Подписываемся на события TimeOfDaySubsystem
+
 		if (UWorld* World = GetWorld())
 		{
 			if (UGameInstance* GameInstance = World->GetGameInstance())
@@ -43,7 +43,7 @@ void UTimeSystemGameEventEmitter::BeginPlay()
 				UTimeOfDaySubsystem* TimeSystem = GameInstance->GetSubsystem<UTimeOfDaySubsystem>();
 				if (TimeSystem)
 				{
-					// Подписываемся на события времени
+
 					TimeSystem->OnHourChanged.AddDynamic(this, &UTimeSystemGameEventEmitter::OnTimeOfDayHourChanged);
 					TimeSystem->OnDayChanged.AddDynamic(this, &UTimeSystemGameEventEmitter::OnTimeOfDayDayChanged);
 					TimeSystem->OnMinuteChanged.AddDynamic(this, &UTimeSystemGameEventEmitter::OnTimeOfDayMinuteChanged);
@@ -59,7 +59,7 @@ void UTimeSystemGameEventEmitter::BeginPlay()
 			}
 		}
 #else
-		// Fallback: используем таймер для проверки изменений
+
 		GetWorld()->GetTimerManager().SetTimer(
 			CheckTimerHandle,
 			this,
@@ -76,7 +76,7 @@ void UTimeSystemGameEventEmitter::BeginPlay()
 void UTimeSystemGameEventEmitter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 #if TIMEOFDAYSYSTEM_AVAILABLE
-	// Отписываемся от событий TimeOfDaySubsystem
+
 	if (UWorld* World = GetWorld())
 	{
 		if (UGameInstance* GameInstance = World->GetGameInstance())
@@ -156,8 +156,8 @@ void UTimeSystemGameEventEmitter::OnTimeOfDayDayChanged(const FTimeOfDayTime& Cu
 
 void UTimeSystemGameEventEmitter::OnTimeOfDayMinuteChanged(const FTimeOfDayTime& CurrentTime)
 {
-	// Можно добавить эмиссию событий каждую минуту если нужно
-	// Пока просто обновляем кэш
+
+
 }
 
 void UTimeSystemGameEventEmitter::OnTimeOfDayPhaseChanged(ETimeOfDayPhase NewPhase, const FTimeOfDayTime& CurrentTime)
@@ -167,7 +167,7 @@ void UTimeSystemGameEventEmitter::OnTimeOfDayPhaseChanged(ETimeOfDayPhase NewPha
 		return;
 	}
 
-	// Эмитим событие смены фазы дня
+
 	FGameplayTag EventTag = FGameplayTag::RequestGameplayTag(FName("Time.Event.PhaseChanged"), false);
 	if (EventTag.IsValid())
 	{
@@ -197,7 +197,7 @@ void UTimeSystemGameEventEmitter::OnTimeOfDaySeasonChanged(ETimeOfDaySeason NewS
 		return;
 	}
 
-	// Эмитим событие смены сезона
+
 	FGameplayTag EventTag = FGameplayTag::RequestGameplayTag(FName("Time.Event.SeasonChanged"), false);
 	if (EventTag.IsValid())
 	{
@@ -220,30 +220,30 @@ void UTimeSystemGameEventEmitter::OnTimeOfDaySeasonChanged(ETimeOfDaySeason NewS
 	}
 }
 #else
-// Заглушки для случая когда TimeOfDaySystem недоступен
+
 void UTimeSystemGameEventEmitter::OnTimeOfDayHourChanged(const FTimeOfDayTime& CurrentTime)
 {
-	// Пустая реализация - TimeOfDaySystem недоступен
+
 }
 
 void UTimeSystemGameEventEmitter::OnTimeOfDayDayChanged(const FTimeOfDayTime& CurrentTime)
 {
-	// Пустая реализация - TimeOfDaySystem недоступен
+
 }
 
 void UTimeSystemGameEventEmitter::OnTimeOfDayMinuteChanged(const FTimeOfDayTime& CurrentTime)
 {
-	// Пустая реализация - TimeOfDaySystem недоступен
+
 }
 
 void UTimeSystemGameEventEmitter::OnTimeOfDayPhaseChanged(ETimeOfDayPhase NewPhase, const FTimeOfDayTime& CurrentTime)
 {
-	// Пустая реализация - TimeOfDaySystem недоступен
+
 }
 
 void UTimeSystemGameEventEmitter::OnTimeOfDaySeasonChanged(ETimeOfDaySeason NewSeason, const FTimeOfDayTime& CurrentTime)
 {
-	// Пустая реализация - TimeOfDaySystem недоступен
+
 }
 #endif
 

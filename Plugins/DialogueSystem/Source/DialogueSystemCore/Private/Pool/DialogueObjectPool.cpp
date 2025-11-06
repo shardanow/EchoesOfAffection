@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Pool/DialogueObjectPool.h"
 #include "Core/DialogueRunner.h"
@@ -138,8 +138,6 @@ UObject* UDialogueObjectPool::CreatePooledObject()
     {
         return nullptr;
     }
-
-    // Используем ::NewObject чтобы вызвать глобальную функцию, а не локальную переменную
     UObject* NewObj = ::NewObject<UObject>(this, PooledClass);
     if (NewObj)
     {

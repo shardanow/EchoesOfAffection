@@ -230,18 +230,37 @@ bool UNPCRelationshipComponent::SetDimensionValue(AActor* TargetActor, FGameplay
 
 bool UNPCRelationshipComponent::ModifyDimensionValue(AActor* TargetActor, FGameplayTag DimensionTag, float Delta)
 {
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("============================================"));
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("NPCRelationshipComponent::ModifyDimensionValue CALLED"));
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("  Owner: %s"), *GetNameSafe(GetOwner()));
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("  TargetActor: %s"), *GetNameSafe(TargetActor));
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("  DimensionTag: %s"), *DimensionTag.ToString());
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("  Delta: %.2f"), Delta);
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("  CachedSubsystem: %s"), CachedSubsystem ? TEXT("Valid") : TEXT("NULL"));
+
 	if (!CachedSubsystem || !TargetActor)
 	{
+		UE_LOG(LogRelationshipSystem, Error, TEXT("? ABORTED: CachedSubsystem=%s, TargetActor=%s"), 
+			CachedSubsystem ? TEXT("Valid") : TEXT("NULL"),
+			TargetActor ? TEXT("Valid") : TEXT("NULL"));
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("============================================"));
 		return false;
 	}
 
 	AActor* Owner = GetOwner();
 	if (!Owner)
 	{
+		UE_LOG(LogRelationshipSystem, Error, TEXT("? ABORTED: Owner is NULL!"));
+		UE_LOG(LogRelationshipSystem, Warning, TEXT("============================================"));
 		return false;
 	}
 
-	return CachedSubsystem->ModifyDimensionValue(Owner, TargetActor, DimensionTag, Delta);
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("? Calling Subsystem->ModifyDimensionValue..."));
+	bool bResult = CachedSubsystem->ModifyDimensionValue(Owner, TargetActor, DimensionTag, Delta);
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("? Subsystem->ModifyDimensionValue returned: %s"), bResult ? TEXT("TRUE") : TEXT("FALSE"));
+	UE_LOG(LogRelationshipSystem, Warning, TEXT("============================================"));
+	
+	return bResult;
 }
 
 bool UNPCRelationshipComponent::ModifyDimensionValues(AActor* TargetActor, const TMap<FGameplayTag, float>& DimensionDeltas)

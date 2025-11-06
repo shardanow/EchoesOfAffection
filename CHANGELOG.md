@@ -7,6 +7,148 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Dialogue System Plugin v1.13.5
+
+#### ActorSchedule Pause/Resume Fix (v1.13.5) - CRITICAL FIX
+- **ScheduleAction_MoveToLocation** now saves target location on **action start**, not on pause
+  - **Problem**: When dialogue interrupts during composite action (e.g., during Wait after Move completed)
+    - PathFollowing had no active target ? returned (0,0,0)
+    - Resume tried to move to (0,0,0) ? ERROR and movement failed
+  - **Solution**: Save target location/actor in `ExecuteActionInternal()` before starting movement
+    - Target is now **always** available for pause/resume
+    - Works correctly even if paused during subsequent child actions
+  - **PauseActionInternal()** now verifies saved target exists (no longer tries to query PathFollowing)
+  - **Benefits**:
+    - ? Actors correctly resume movement after dialogue interruption
+    - ? No more "(0,0,0)" errors in logs
+    - ? Works with composite actions (Move ? Wait ? Move chain)
+  - ? Reliable pause/resume at ANY point in schedule execution
+
+### Added - Dialogue System Plugin v1.13.4
+
+#### Sequence + Schedule Transform Restoration Fix (v1.13.4) - CRITICAL FIX
+- **Smart transform restoration** for sequence participants with active schedules
+  - Prevents actors from being teleported back after sequence ends
+  - Checks if actor has `ScheduleComponent` before restoring transform
+  - Skips restoration if schedule is **active AND not paused**
+  - Uses **soft dependency** through reflection (no hard coupling)
+- **DialogueEffect_PlaySequence** improvements:
+  - Added schedule detection in `CleanupSequence()`
+  - Added detailed logging for debugging transform restoration
+  - Preserves natural movement flow for non-dialogue actors in sequences
+- **Problem solved**: Alice walking in background of Lianne dialogue
+  - Before: Alice teleported back to sequence start position
+  - After: Alice continues her schedule from current position ?
+- **Documentation**: `Sequence_Schedule_Integration_Fix.md` - Complete fix details
+
+#### Benefits of v1.13.4
+- ? **Natural NPC behavior** ? Background NPCs keep moving after cutscenes
+- ? **No teleporting** ? Actors stay where sequence left them
+- ? **Soft coupling** ? Uses reflection, no dependencies on ScheduleSystem
+- ? **Backward compatible** ? Doesn't break sequences without schedules
+
+### Added - Dialogue System Plugin v1.13.2
+
+#### Sequence Participants + ActorSchedule Integration (v1.13.2) - EVENT-DRIVEN ARCHITECTURE
+- **UDialogueAdditionalActors**: Helper class to pass sequence participants through GameEventBus
+  - Lightweight UObject for passing actor arrays in `FGameEventPayload.PayloadObject`
+  - Blueprint-safe (uses `TArray<AActor*>` instead of weak pointers)
+  - `ContainsActor()` helper method for quick lookups
+- **DialogueEffect_PlaySequence Event System**:
+  - NEW: `OnSequenceParticipantsGathered` delegate fires when sequence starts
+- NEW: `GatherSequenceParticipants()` method finds all Possessable actors in sequence
+  - **NO HARD DEPENDENCIES** on GameEventBus — uses event-driven pattern
+  - External systems (Blueprint/C++) can bind and handle sequence actors
+- **ScheduleComponent PayloadObject Support**:
+  - `OnDialogueStarted()` now checks `PayloadObject` for `UDialogueAdditionalActors`
+  - Sequence participants (like Alice) are now correctly paused during cutscenes
+  - Prevents actors from running away mid-sequence
+- **Documentation**:
+  - `Sequence_Participants_QuickStart.md` — Manual Blueprint/C++ bridge setup
+  - `Sequence_Auto_Bridge.md` — Automatic component design (RECOMMENDED!)
+  - `Sequence_Schedule_Integration_Summary.md` — Complete architecture overview
+
+#### Benefits of v1.13.2
+- ? **Soft Coupling** — No hard dependencies between systems
+- ? **Flexible Integration** — Choose Blueprint or C++ bridge
+- ? **Event-Driven** — Clean separation of concerns
+- ? **Testable** — Can mock event handlers
+- ? **Extensible** — Other systems can listen to sequence participants
+
+#### Known Limitations
+- **Bridge Required** — You must implement Blueprint/C++ bridge to connect events
+- **Manual Setup** — Automatic component (`SequenceScheduleBridgeComponent`) is design doc only
+- **See Documentation** for implementation steps
+
+### Added - Dialogue System Plugin v1.13
+
+#### Sequence Auto-Stop on Dialogue End (v1.13) - CRITICAL FIX
+- **Automatic sequence cleanup** when dialogue ends during sequence playback
+  - Prevents camera from "falling into player" when dialogue closes
+  - Prevents actors from running in camera while sequence is still playing
+  - Stops sequence playback immediately on dialogue end
+  - Restores actor transforms and camera properly
+- **DialogueRunner** now tracks active sequence
+  - `RegisterActiveSequence()` - called automatically when sequence starts
+  - `ClearActiveSequence()` - called automatically when sequence ends
+  - Force-stops sequence in `EndDialogue()` if still playing
+- **DialogueSessionContext** now holds weak reference to owning DialogueRunner
+  - `SetOwningRunner()` / `GetOwningRunner()` methods
+  - Used by effects to register with runner
+- **DialogueEffect_PlaySequence** improvements
+  - `StopSequence()` - force-stop sequence playback
+  - `IsPlaying()` - check if sequence is currently playing
+  - `CleanupSequence()` - extracted cleanup logic
+  - Auto-registration with DialogueRunner on Execute
+  - Auto-cleanup on OnSequenceFinished
+- **Documentation**: `Sequence_Auto_Stop_Fix.md` - Complete fix documentation
+
+### Added - Dialogue System Plugin v1.12
+
+#### Level Sequencer Integration (NEW!)
+- **UDialogueEffect_PlaySequence**: Play Level Sequences during dialogues
+  - Syntax: `PlaySequence(/Game/Sequences/LS_MySequence)`
+  - Parameters: path, waitForCompletion, restoreCamera, **restoreActors (NEW!)**
+  - Full camera control and restoration
+  - **Actor transform restoration** for Possessables
+  - Seamless integration with dialogue flow
+- **DialogueEffectParser** extended with `ParsePlaySequence()` support
+
+#### Actor Schedule Integration (NEW!)
+- **UActorScheduleComponent**: AI schedule management for NPCs
+  - Auto-pause AI/movement on dialogue start
+  - Auto-resume from **current position** on dialogue end
+  - GameEventBus integration for event-driven control
+  - Configurable pause behavior (AI, movement, etc.)
+  - **Perfect for Open World Dating Sim!**
+  - **v1.13.1**: Aggressive movement stop (AIController + CharacterMovementComponent)
+  - **v1.13.1**: Comprehensive debugging logs for troubleshooting
+- **Architecture**: Possessable + ActorSchedule + Sequencer integration
+  - Actors pause during dialogue/sequence
+  - Sequence teleports and moves actors (Possessable)
+  - After dialogue, actors **continue from new position** (natural!)
+  - No "teleport back" = realistic open world behavior
+  - **Soft coupling** through GameEventBus (no hard dependencies)
+
+#### Complete Documentation Suite
+  - `Sequencer_Tutorial_Complete.md` - Comprehensive tutorial
+  - `Sequencer_QuickRef.md` - Quick reference guide
+  - `Sequencer_Dialogue_Integration.md` - Integration guide
+  - **`Sequencer_Possessable_vs_Spawnable.md` - CRITICAL: Actor handling** ? READ THIS!
+  - `Sequencer_Possessable_Quick.md` - Quick reference
+  - `Sequencer_SUMMARY.md` - Complete overview
+  - `Sequencer_README.md` - Quick start
+  - **`ActorSchedule_Architecture.md` - Actor Schedule integration** ? NEW!
+- **Dependencies Added**: LevelSequence, MovieScene modules
+
+#### New Capabilities:
+- ? Create cinematic dialogues WITHOUT CODE
+- ? Visual camera control through Sequencer
+- ? Move NPCs with keyframe animation
+- ? Add character animations drag-and-drop
+- ? Professional AAA-quality cinematics
+- ? Perfect for Dating Sim / Visual Novel games
+
 ### Added - Dialogue System Plugin v1.11
 
 #### Core Systems
@@ -171,6 +313,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `False_Positive_Error_Fix_v1.9.md`
   - `Input_Blocker_Fix_v1.6.md`
 
+- **Sequencer Integration**:
+  - `Sequencer_Tutorial_Complete.md`: Comprehensive tutorial for Sequencer integration
+  - `Sequencer_QuickRef.md`: Quick reference guide for Sequencer nodes and usage
+  - `Sequencer_Dialogue_Integration.md`: How to integrate Sequencer with dialogue events
+  - `Sequencer_Possessable_vs_Spawnable.md`: CRITICAL - Differences and usage guidelines for Possessables and Spawnables
+  - `Sequencer_Possessable_Quick.md`: Quick reference for Possessable actors
+  - `Sequencer_SUMMARY.md`: Summary of Sequencer features and usage
+  - `Sequencer_README.md`: Quick start guide for Sequencer integration
+  - **`ActorSchedule_Architecture.md` - Actor Schedule integration** ? NEW!
+
 #### Code Examples
 - `Player_Dialogue_Events_Example.cpp`: Complete player event integration example
 
@@ -219,6 +371,8 @@ Plugins/DialogueSystem/
 - Enhanced Input plugin
 - UMG module
 - AI Module
+- LevelSequence module
+- MovieScene module
 
 ## [0.2.0] - 2025-10-20 (c73ae94)
 
@@ -265,7 +419,8 @@ Plugins/DialogueSystem/
 
 ## Version History Summary
 
-- **v1.11** (Current): Input focus restoration fix - CRITICAL UPDATE
+- **v1.12** (Current): Sequencer integration and v1.11 features
+- **v1.11**: Input focus restoration fix - CRITICAL UPDATE
 - **v1.10**: Mouse cursor and UI interaction support
 - **v1.9**: Enhanced Input false positive fix
 - **v1.8**: Multiple input blocking modes
@@ -277,7 +432,7 @@ Plugins/DialogueSystem/
 
 ## Known Issues
 
-None currently. See [GitHub Issues](https://github.com/shardanow/EchoesOfAffection/issues) for tracking.
+None currently. See [GitHub Issues](https://github.com/shardanaw/EchoesOfAffection/issues) for tracking.
 
 ## Upgrade Notes
 
@@ -299,7 +454,7 @@ No breaking changes to API.
 ## Contributing
 
 This is a personal project, but feedback and suggestions are welcome!
-Please open an issue on GitHub: https://github.com/shardanow/EchoesOfAffection/issues
+Please open an issue on GitHub: https://github.com/shardanaw/EchoesOfAffection/issues
 
 ## License
 
@@ -308,6 +463,6 @@ Copyright Epic Games, Inc. All Rights Reserved.
 ---
 
 **Project**: Echoes of Affection  
-**Repository**: https://github.com/shardanow/EchoesOfAffection  
+**Repository**: https://github.com/shardanaw/EchoesOfAffection  
 **Author**: Shardanow  
 **Engine**: Unreal Engine 5.6

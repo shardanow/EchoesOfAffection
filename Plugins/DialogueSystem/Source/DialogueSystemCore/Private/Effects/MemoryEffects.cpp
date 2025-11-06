@@ -1,10 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Effects/MemoryEffects.h"
 #include "GameFramework/Actor.h"
-
-// Реализация эффектов памяти
-// Используем рефлексию для работы с NPCMemoryComponent, чтобы избежать зависимости от Runtime модуля
 
 void UAddMemoryEffect::Execute_Implementation(AActor* NPCActor, AActor* PlayerActor) const
 {
@@ -12,8 +9,6 @@ void UAddMemoryEffect::Execute_Implementation(AActor* NPCActor, AActor* PlayerAc
 	{
 		return;
 	}
-
-	// Ищем класс компонента
 	UClass* MemoryCompClass = FindObject<UClass>(nullptr, TEXT("/Script/DialogueSystemRuntime.NPCMemoryComponent"));
 	if (!MemoryCompClass)
 	{
@@ -25,8 +20,6 @@ void UAddMemoryEffect::Execute_Implementation(AActor* NPCActor, AActor* PlayerAc
 	{
 		return;
 	}
-
-	// Используем рефлексию для вызова метода AddMemoryByTag
 	UFunction* AddMemoryFunc = MemoryComp->FindFunction(TEXT("AddMemoryByTag"));
 	if (!AddMemoryFunc)
 	{

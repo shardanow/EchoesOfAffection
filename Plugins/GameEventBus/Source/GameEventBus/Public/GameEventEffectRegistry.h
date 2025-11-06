@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,7 +12,7 @@ struct FGameEventPayload;
 
 /**
  * Generic Effect Interface
- * Любая система может создать свой Effect класс, реализующий этот интерфейс
+ * , 
  */
 UINTERFACE(MinimalAPI, Blueprintable)
 class UGenericGameEffect : public UInterface
@@ -59,7 +59,7 @@ public:
 
 /**
  * Generic Condition Evaluator Interface
- * Системы могут регистрировать свои условия (для квестов, диалогов и т.д.)
+ * , )
  */
 UINTERFACE(MinimalAPI, Blueprintable)
 class UGenericConditionEvaluator : public UInterface
@@ -92,7 +92,7 @@ public:
 
 /**
  * Effect Registration Info
- * Хранит информацию о зарегистрированном эффекте
+ * 
  */
 USTRUCT(BlueprintType)
 struct GAMEEVENTBUS_API FEffectRegistration
@@ -158,15 +158,15 @@ struct GAMEEVENTBUS_API FConditionRegistration
 /**
  * Game Event Effect Registry
  * 
- * Центральная регистрация эффектов и условий
- * Любая система может зарегистрировать свои эффекты/условия через GameplayTags
  * 
- * Пример:
- * - QuestSystem регистрирует "Effect.Quest.Start" и "Condition.Quest.Active"
- * - DialogueSystem регистрирует "Effect.Dialogue.ModifyAffection"
- * - TimeSystem регистрирует "Condition.Time.InRange"
  * 
- * Другие системы могут вызывать эти эффекты/условия без прямой зависимости!
+ * 
+ * 
+ * - QuestSystem 
+ * - DialogueSystem 
+ * - TimeSystem 
+ * 
+ * 
  */
 UCLASS(BlueprintType)
 class GAMEEVENTBUS_API UGameEventEffectRegistry : public UObject

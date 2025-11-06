@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -155,7 +155,7 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Time of Day")
 	UTimeOfDaySettings* GetSettings() const { return Settings; }
 
-	// ========== Blueprint-Friendly Wrapper Functions (для совместимости) ==========
+
 
 	/** Register a listener - Blueprint friendly version */
 	UFUNCTION(BlueprintCallable, Category = "Time of Day", meta = (DisplayName = "Register Listener"))

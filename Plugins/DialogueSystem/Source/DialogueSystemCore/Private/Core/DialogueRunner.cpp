@@ -7,10 +7,18 @@
 #include "Data/DialogueDataAsset.h"
 #include "Conditions/DialogueConditionEvaluator.h"
 #include "Effects/DialogueEffectExecutor.h"
+#include "Effects/DialogueEffect_PlaySequence.h" // NEW v1.13: For sequence cleanup
 #include "Commands/DialogueCommandHistory.h"
 #include "Commands/DialogueCommands.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
+
+// GameEventBus integration (optional)
+#if WITH_GAMEEVENTBUS
+#include "GameEventBusSubsystem.h"
+#endif
+
+DEFINE_LOG_CATEGORY_STATIC(LogDialogueRunner, Log, All);
 
 UDialogueRunner::UDialogueRunner()
  : LoadedDialogue(nullptr)
@@ -74,6 +82,12 @@ if (!StateMachine)
         return;
     }
     
+    // ? NEW v1.14: Set owning runner for sequence management
+    CurrentContext->SetOwningRunner(this);
+    UE_LOG(LogDialogueRunner, Log, TEXT("Set OwningRunner for Context: %s"), *GetName());
+    
+    CurrentContext->Initialize();
+    
     // Initialize participants - use Player and NPC fields instead
     if (InParticipants.Num() > 0)
     {
@@ -118,10 +132,13 @@ if (!StateMachine)
     StateMachine->TransitionTo(EDialogueState::Active, TEXT("Dialogue ready"));
     
     // Broadcast start event
- OnDialogueStarted.Broadcast(InDialogue->DialogueId);
+    OnDialogueStarted.Broadcast(InDialogue->DialogueId);
+    
+    // ? NEW v1.14: Emit GameEventBus event for ActorScheduleSystem integration
+    EmitDialogueStartedEvent(InDialogue->DialogueId, InParticipants);
     
     // Go to start node
-  GoToNode(StartNodeId);
+    GoToNode(StartNodeId);
 }
 
 void UDialogueRunner::EndDialogue()
@@ -147,7 +164,31 @@ void UDialogueRunner::EndDialogue()
     }
     
     bIsActive = false; // Keep for backward compatibility
+    
+    // ? NEW v1.14: Stop active sequence FIRST (before broadcasting events)
+    // This ensures sequence stops and camera restores BEFORE dialogue cleanup
+  UE_LOG(LogDialogueRunner, Warning, TEXT("[DIALOGUE] EndDialogue called"));
+    UE_LOG(LogDialogueRunner, Warning, TEXT("[DIALOGUE]   ActiveSequenceEffect: %s"), ActiveSequenceEffect ? TEXT("VALID") : TEXT("NULL"));
+    
+    if (ActiveSequenceEffect)
+    {
+        UE_LOG(LogDialogueRunner, Warning, TEXT("[DIALOGUE] Stopping active sequence on dialogue end"));
+ ActiveSequenceEffect->StopSequence();
+        ActiveSequenceEffect = nullptr;
+  }
+    else
+    {
+        UE_LOG(LogDialogueRunner, Warning, TEXT("[DIALOGUE] No active sequence to stop"));
+    }
+    
+    // Broadcast end event (legacy)
     OnDialogueEnded.Broadcast();
+
+    // ? NEW v1.14: Emit GameEventBus event for ActorScheduleSystem integration
+    if (LoadedDialogue)
+    {
+        EmitDialogueEndedEvent(LoadedDialogue->DialogueId);
+    }
     
     // Cleanup
     CurrentNode = nullptr;
@@ -866,10 +907,160 @@ void UDialogueRunner::ClearCommandHistory()
 
 void UDialogueRunner::SetCommandRecordingEnabled(bool bEnabled)
 {
-  bEnableCommandHistory = bEnabled;
+    bEnableCommandHistory = bEnabled;
 
     if (CommandInvoker)
     {
-        CommandInvoker->SetRecordingEnabled(bEnabled);
+      CommandInvoker->SetRecordingEnabled(bEnabled);
     }
+}
+
+//==============================================================================
+// Sequence Integration (v1.13)
+//==============================================================================
+
+void UDialogueRunner::RegisterActiveSequence(UDialogueEffect_PlaySequence* SequenceEffect)
+{
+    ActiveSequenceEffect = SequenceEffect;
+}
+
+void UDialogueRunner::ClearActiveSequence()
+{
+ ActiveSequenceEffect = nullptr;
+}
+
+//==============================================================================
+// GameEventBus Integration (v1.14)
+//==============================================================================
+
+void UDialogueRunner::EmitDialogueStartedEvent(FName DialogueId, const TArray<UObject*>& Participants)
+{
+#if WITH_GAMEEVENTBUS
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        UE_LOG(LogDialogueRunner, Warning, TEXT("[GAMEEVENTBUS] Cannot emit DialogueStarted: World is null"));
+        return;
+    }
+
+    UGameEventBusSubsystem* EventBus = UGameEventBusSubsystem::Get(World);
+    if (!EventBus)
+    {
+        UE_LOG(LogDialogueRunner, Warning, TEXT("[GAMEEVENTBUS] Cannot emit DialogueStarted: EventBus is null"));
+    return;
+    }
+
+    // Prepare payload
+    FGameEventPayload Payload;
+    Payload.EventTag = FGameplayTag::RequestGameplayTag(FName("GameEvent.Dialogue.Started"));
+  Payload.StringParam = DialogueId;
+
+    // Set participants as instigator/target (Player and NPC only)
+    if (Participants.Num() > 0)
+    {
+        Payload.InstigatorActor = Cast<AActor>(Participants[0]); // Player
+    }
+    if (Participants.Num() > 1)
+    {
+    Payload.TargetActor = Cast<AActor>(Participants[1]); // NPC
+    }
+
+    // ? NEW v1.14: Populate AdditionalPersonaIds from DialogueDataAsset
+  UE_LOG(LogDialogueRunner, Warning, TEXT("[GAMEEVENTBUS] ?? Checking for AdditionalPersonas..."));
+    UE_LOG(LogDialogueRunner, Warning, TEXT("[GAMEEVENTBUS]   LoadedDialogue: %s"), LoadedDialogue ? TEXT("VALID") : TEXT("NULL"));
+    
+if (LoadedDialogue)
+    {
+      UE_LOG(LogDialogueRunner, Warning, TEXT("[GAMEEVENTBUS]   AdditionalPersonas.Num(): %d"), LoadedDialogue->AdditionalPersonas.Num());
+     
+        if (LoadedDialogue->AdditionalPersonas.Num() > 0)
+     {
+            for (const TPair<FName, FDialoguePersonaData>& Pair : LoadedDialogue->AdditionalPersonas)
+       {
+             FName PersonaId = Pair.Value.PersonaId;
+ 
+      UE_LOG(LogDialogueRunner, Warning, TEXT("[GAMEEVENTBUS]     PersonaId: '%s' (IsNone: %s)"), 
+           *PersonaId.ToString(), PersonaId.IsNone() ? TEXT("YES") : TEXT("NO"));
+                
+                if (!PersonaId.IsNone())
+  {
+           Payload.AdditionalPersonaIds.Add(PersonaId.ToString());
+          UE_LOG(LogDialogueRunner, Warning, TEXT("[GAMEEVENTBUS]     ? Added PersonaId='%s' to payload"), 
+    *PersonaId.ToString());
+     }
+       }
+   }
+    }
+
+    UE_LOG(LogDialogueRunner, Warning, TEXT("[GAMEEVENTBUS] ?? Final Payload:"));
+    UE_LOG(LogDialogueRunner, Warning, TEXT("[GAMEEVENTBUS]   DialogueId: %s"), *DialogueId.ToString());
+    UE_LOG(LogDialogueRunner, Warning, TEXT("[GAMEEVENTBUS]   AdditionalPersonaIds.Num(): %d"), Payload.AdditionalPersonaIds.Num());
+    for (int32 i = 0; i < Payload.AdditionalPersonaIds.Num(); ++i)
+    {
+        UE_LOG(LogDialogueRunner, Warning, TEXT("[GAMEEVENTBUS]     [%d] = '%s'"), i, *Payload.AdditionalPersonaIds[i]);
+    }
+
+    // Emit event
+    EventBus->EmitEvent(Payload, true);  // bLogEvent = true for debugging
+
+#endif // WITH_GAMEEVENTBUS
+}
+
+//==============================================================================
+// NEW v1.14: GameEventBus Integration - Dialogue Ended Event
+//==============================================================================
+
+void UDialogueRunner::EmitDialogueEndedEvent(FName DialogueId)
+{
+#if WITH_GAMEEVENTBUS
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		UE_LOG(LogDialogueRunner, Warning, TEXT("[GAMEEVENTBUS] Cannot emit DialogueEnded: World is null"));
+		return;
+	}
+
+	UGameEventBusSubsystem* EventBus = UGameEventBusSubsystem::Get(World);
+	if (!EventBus)
+	{
+		UE_LOG(LogDialogueRunner, Warning, TEXT("[GAMEEVENTBUS] Cannot emit DialogueEnded: EventBus is null"));
+		return;
+	}
+
+	// Prepare payload
+	FGameEventPayload Payload;
+	Payload.EventTag = FGameplayTag::RequestGameplayTag(FName("GameEvent.Dialogue.Ended"));
+	Payload.StringParam = DialogueId;
+
+	// Set participants if available
+	if (CurrentContext)
+	{
+		Payload.InstigatorActor = CurrentContext->GetPlayer();
+		Payload.TargetActor = CurrentContext->GetNPC();
+	}
+	
+	// ? NEW v1.14: Populate AdditionalPersonaIds from DialogueDataAsset (SAME AS STARTED!)
+	if (LoadedDialogue)
+	{
+		if (LoadedDialogue->AdditionalPersonas.Num() > 0)
+		{
+			for (const TPair<FName, FDialoguePersonaData>& Pair : LoadedDialogue->AdditionalPersonas)
+			{
+				FName PersonaId = Pair.Value.PersonaId;
+				
+				if (!PersonaId.IsNone())
+				{
+					Payload.AdditionalPersonaIds.Add(PersonaId.ToString());
+				}
+			}
+		}
+	}
+
+	UE_LOG(LogDialogueRunner, Warning, TEXT("[GAMEEVENTBUS] ?? Emitting Dialogue.Ended: DialogueId='%s', AdditionalPersonas=%d"), 
+		*DialogueId.ToString(), Payload.AdditionalPersonaIds.Num());
+
+	// Emit event
+	EventBus->EmitEvent(Payload, true);
+
+#endif // WITH_GAMEEVENTBUS
 }

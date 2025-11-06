@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Audio/MusicManager.h"
 #include "Kismet/GameplayStatics.h"
@@ -25,7 +25,7 @@ void UMusicManager::Initialize(FSubsystemCollectionBase& Collection)
     TargetVolume = 1.0f;
     SourceVolume = 1.0f;
 
-    // Получаем World через GameInstance
+
     UGameInstance* GameInstance = GetGameInstance();
     if (!GameInstance)
     {
@@ -40,7 +40,7 @@ void UMusicManager::Initialize(FSubsystemCollectionBase& Collection)
         return;
     }
 
-    // ? Создаём PrimaryAudioComponent
+
     PrimaryAudioComponent = NewObject<UAudioComponent>(GameInstance, UAudioComponent::StaticClass(), TEXT("PrimaryMusicComponent"));
     if (PrimaryAudioComponent)
     {
@@ -50,7 +50,7 @@ void UMusicManager::Initialize(FSubsystemCollectionBase& Collection)
         PrimaryAudioComponent->bAutoDestroy = false;
         PrimaryAudioComponent->SetVolumeMultiplier(1.0f);
  
-        // ? ПРАВИЛЬНАЯ ПОСЛЕДОВАТЕЛЬНОСТЬ
+
         PrimaryAudioComponent->RegisterComponentWithWorld(World);
         PrimaryAudioComponent->InitializeComponent();
         
@@ -62,7 +62,7 @@ void UMusicManager::Initialize(FSubsystemCollectionBase& Collection)
         UE_LOG(LogMusicManager, Error, TEXT("Failed to create PrimaryAudioComponent!"));
     }
 
-    // ? Создаём SecondaryAudioComponent
+
     SecondaryAudioComponent = NewObject<UAudioComponent>(GameInstance, UAudioComponent::StaticClass(), TEXT("SecondaryMusicComponent"));
     if (SecondaryAudioComponent)
   {
@@ -72,7 +72,7 @@ void UMusicManager::Initialize(FSubsystemCollectionBase& Collection)
         SecondaryAudioComponent->bAutoDestroy = false;
         SecondaryAudioComponent->SetVolumeMultiplier(1.0f);
   
-        // ? ПРАВИЛЬНАЯ ПОСЛЕДОВАТЕЛЬНОСТЬ
+
    SecondaryAudioComponent->RegisterComponentWithWorld(World);
         SecondaryAudioComponent->InitializeComponent();
         
@@ -136,7 +136,7 @@ UMusicManager* UMusicManager::Get(const UObject* WorldContextObject)
     return nullptr;
 }
 
-// ? НОВАЯ реализация: RegisterMusicZone - возвращает уникальный ID
+
 int32 UMusicManager::RegisterMusicZone(
     USoundBase* NewMusic,
     int32 Priority,
@@ -150,7 +150,7 @@ int32 UMusicManager::RegisterMusicZone(
         return -1;
     }
 
-    // Генерируем уникальный ID
+
     int32 ZoneID = NextZoneID++;
 
     // Create request
@@ -162,7 +162,7 @@ int32 UMusicManager::RegisterMusicZone(
     Request.VolumeMultiplier = VolumeMultiplier;
     Request.RequestTime = FPlatformTime::Seconds();
 
-    // Add to active zones с уникальным ID
+
     ActiveZones.Add(ZoneID, Request);
 
     UE_LOG(LogMusicManager, Log, TEXT("?? Registered zone ID=%d: %s (Priority: %d, Type: %d)"),
@@ -181,10 +181,10 @@ int32 UMusicManager::RegisterMusicZone(
         }
     }
 
-    return ZoneID; // Возвращаем ID для последующего Release
+    return ZoneID; // 
 }
 
-// ? УСТАРЕВШАЯ функция - теперь просто обёртка для RegisterMusicZone
+
 void UMusicManager::RequestMusicChange(
     USoundBase* NewMusic,
     int32 Priority,
@@ -192,11 +192,11 @@ void UMusicManager::RequestMusicChange(
     float CrossfadeDurationParam,
     float VolumeMultiplier)
 {
-    // Просто вызываем новую функцию (для обратной совместимости)
+
     RegisterMusicZone(NewMusic, Priority, TransitionType, CrossfadeDurationParam, VolumeMultiplier);
 }
 
-// ? ИЗМЕНЕНО: ReleaseZone теперь работает с уникальным ID
+
 void UMusicManager::ReleaseZone(int32 ZoneID)
 {
     if (!ActiveZones.Contains(ZoneID))
@@ -205,21 +205,21 @@ void UMusicManager::ReleaseZone(int32 ZoneID)
         return;
     }
 
-    // Сохраняем Priority перед удалением
+
     int32 ReleasedPriority = ActiveZones[ZoneID].Priority;
 
-    // Удаляем зону
+
     ActiveZones.Remove(ZoneID);
     UE_LOG(LogMusicManager, Log, TEXT("??? Released zone ID=%d (Priority: %d)"), ZoneID, ReleasedPriority);
 
-    // Проверяем, была ли это текущая активная зона
-    // Если да - переключаемся на следующую по приоритету
+
+
     FMusicRequest NextRequest;
     int32 NextPriority = -1;
 
     if (FindHighestPriorityZone(NextRequest, NextPriority))
     {
-        // Если новая зона имеет другую музыку или приоритет - переключаемся
+
         if (CurrentMusic != NextRequest.Music || CurrentPriority != NextPriority)
 {
          ProcessMusicChange(NextRequest);
@@ -430,7 +430,7 @@ void UMusicManager::StartCrossfade(USoundBase* NewMusic, float Duration, float T
     UE_LOG(LogMusicManager, Log, TEXT("?? StartCrossfade: NewMusic=%s, Duration=%.2f, TargetVol=%.2f"), 
       *NewMusic->GetName(), Duration, TargetVol);
 
-    // ? КРИТИЧНО: Сохраняем текущую громкость перед изменениями
+
     float CurrentVolume = 0.0f;
     bool bHasOldMusic = false;
 
@@ -446,16 +446,16 @@ UE_LOG(LogMusicManager, Log, TEXT("? Old music: %s, Volume: %.2f"),
         UE_LOG(LogMusicManager, Log, TEXT("?? No old music playing - starting fresh"));
     }
 
-    // ? НОВЫЙ ПОДХОД: НЕ ИСПОЛЬЗУЕМ SWAP! Используем Secondary напрямую для нового трека
+
   
- // 1. Останавливаем Secondary если он играет
+
     if (SecondaryAudioComponent->IsPlaying())
     {
         UE_LOG(LogMusicManager, Warning, TEXT("Secondary component was playing - stopping it"));
         SecondaryAudioComponent->Stop();
     }
 
-    // 2. ? ДИАГНОСТИКА Secondary компонента
+
     UE_LOG(LogMusicManager, Log, TEXT("?? Secondary Component Diagnostics:"));
     UE_LOG(LogMusicManager, Log, TEXT("   - IsValid: %s"), IsValid(SecondaryAudioComponent) ? TEXT("Yes") : TEXT("No"));
     UE_LOG(LogMusicManager, Log, TEXT("   - IsRegistered: %s"), SecondaryAudioComponent->IsRegistered() ? TEXT("Yes") : TEXT("No"));
@@ -487,15 +487,15 @@ return;
         }
     }
 
-    // ? УБРАНО: Ручная активация не нужна - используем bAutoActivate
-    // Компонент уже активен благодаря bAutoActivate = true
+
+
     if (!SecondaryAudioComponent->IsActive())
     {
-        //UE_LOG(LogMusicManager, Warning, TEXT("?? SecondaryAudioComponent is INACTIVE несмотря на bAutoActivate=true!"));
-     //UE_LOG(LogMusicManager, Warning, TEXT("?? Это может указывать на более серьёзную проблему, но продолжаем в любом случае..."));
+
+
     }
 
-    // 3. ? ПРАВИЛЬНАЯ ПОСЛЕДОВАТЕЛЬНОСТЬ: Sound -> Play() -> Volume
+
     SecondaryAudioComponent->SetSound(NewMusic);
     
     if (!SecondaryAudioComponent->Sound)
@@ -504,7 +504,7 @@ return;
         return;
     }
 
-// ? КРИТИЧНО: ДИАГНОСТИКА Sound Asset
+
     UE_LOG(LogMusicManager, Log, TEXT("? Sound set on Secondary: %s"), *SecondaryAudioComponent->Sound->GetName());
     UE_LOG(LogMusicManager, Log, TEXT("?? Sound Asset Diagnostics:"));
     UE_LOG(LogMusicManager, Log, TEXT("   - Sound Class: %s"), 
@@ -512,7 +512,7 @@ return;
     UE_LOG(LogMusicManager, Log, TEXT("   - Duration: %.2f seconds"), SecondaryAudioComponent->Sound->GetDuration());
     UE_LOG(LogMusicManager, Log, TEXT("   - Is Valid Asset: %s"), SecondaryAudioComponent->Sound->IsValidLowLevel() ? TEXT("Yes") : TEXT("No"));
     
-    // ? КРИТИЧНО: Проверяем если это SoundWave
+
     if (USoundWave* SoundWave = Cast<USoundWave>(SecondaryAudioComponent->Sound))
     {
         UE_LOG(LogMusicManager, Log, TEXT("   - Sound Wave: Yes"));
@@ -530,10 +530,10 @@ return;
       UE_LOG(LogMusicManager, Warning, TEXT("   - Unknown Sound Type!"));
     }
 
-    // 4. ? КРИТИЧНО: Play() ПЕРЕД установкой громкости!
+
     UE_LOG(LogMusicManager, Log, TEXT("?? Calling Play() on SecondaryAudioComponent..."));
     
-// ? КРИТИЧНО: Диагностика Audio Device ПЕРЕД Play()
+
     if (UWorld* World = GetWorld())
     {
   if (FAudioDevice* AudioDevice = World->GetAudioDeviceRaw())
@@ -551,7 +551,7 @@ return;
   
     SecondaryAudioComponent->Play();
     
-    // ? Даём движку время на обработку (минимальная задержка)
+
     if (UWorld* World = GetWorld())
     {
       FTimerHandle DummyHandle;
@@ -566,7 +566,7 @@ return;
         UE_LOG(LogMusicManager, Error, TEXT("   - Sound: %s"), SecondaryAudioComponent->Sound ? *SecondaryAudioComponent->Sound->GetName() : TEXT("None"));
         UE_LOG(LogMusicManager, Error, TEXT("   - bAutoActivate: %s"), SecondaryAudioComponent->bAutoActivate ? TEXT("Yes") : TEXT("No"));
         
-        // ? КРИТИЧНО: Пробуем альтернативный метод - Play(0.0f) с явным временем
+
      UE_LOG(LogMusicManager, Warning, TEXT("?? Trying alternative Play(0.0f) method..."));
         SecondaryAudioComponent->Play(0.0f);
         
@@ -585,9 +585,9 @@ return;
         UE_LOG(LogMusicManager, Log, TEXT("? SecondaryAudioComponent is now playing!"));
     }
 
-    // 5. ТЕПЕРЬ устанавливаем громкость (начинаем с МИНИМАЛЬНОЙ для fade-in)
-    // КРИТИЧНО: НЕ используем 0.0! Unreal останавливает звук при 0.0!
-    const float MinAudibleVolume = 0.001f;  // Минимальная слышимая громкость
+
+
+    const float MinAudibleVolume = 0.001f;  // 
     SecondaryAudioComponent->SetVolumeMultiplier(MinAudibleVolume);
     UE_LOG(LogMusicManager, Log, TEXT("Set initial volume to %.3f (min audible)"), MinAudibleVolume);
 
@@ -632,16 +632,16 @@ void UMusicManager::UpdateCrossfadeTimer()
     // Smooth curve for better audio fade
     float SmoothAlpha = FMath::SmoothStep(0.0f, 1.0f, Alpha);
 
-    // КРИТИЧНО: Используем минимальную громкость вместо 0.0
-    const float MinAudibleVolume = 0.001f;  // Минимальная слышимая громкость
 
-// Secondary - новый трек (fade IN от минимума до целевой громкости)
+    const float MinAudibleVolume = 0.001f;  // 
+
+
     float NewTrackVolume = FMath::Lerp(MinAudibleVolume, MasterVolume * TargetVolume, SmoothAlpha);
     
- // Primary - старый трек (fade OUT от текущей до минимума)
+
     float OldTrackVolume = FMath::Lerp(MasterVolume * SourceVolume, MinAudibleVolume, SmoothAlpha);
 
-    // Логируем каждые 0.5 секунды
+
   static float LogTimer = 0.0f;
     LogTimer += 0.016f;
 if (LogTimer >= 0.5f)
@@ -649,7 +649,7 @@ if (LogTimer >= 0.5f)
      UE_LOG(LogMusicManager, Log, TEXT("Crossfade: Progress=%.0f%%, NewVol=%.2f, OldVol=%.2f"),
      Alpha * 100.0f, NewTrackVolume, OldTrackVolume);
         
-        // КРИТИЧНО: Проверяем реальную громкость компонентов
+
         if (SecondaryAudioComponent)
 {
   UE_LOG(LogMusicManager, Log, TEXT("  Secondary ACTUAL volume: %.2f, IsPlaying: %s"),
@@ -696,7 +696,7 @@ if (LogTimer >= 0.5f)
             UE_LOG(LogMusicManager, Log, TEXT("Stopped old track on Primary"));
     }
 
-        // SWAP компонентов в КОНЦЕ crossfade
+
         UAudioComponent* Temp = PrimaryAudioComponent;
     PrimaryAudioComponent = SecondaryAudioComponent;
         SecondaryAudioComponent = Temp;
@@ -722,17 +722,17 @@ bool UMusicManager::FindHighestPriorityZone(FMusicRequest& OutRequest, int32& Ou
     bool bFound = false;
     int32 SelectedZoneID = -1;
 
-    // ? ИЗМЕНЕНО: Теперь ищем по Priority из FMusicRequest
-    // При одинаковом приоритете - выбираем зону с НАИБОЛЬШИМ ID (последнюю зарегистрированную)
+
+
     for (const auto& Pair : ActiveZones)
     {
         const FMusicRequest& Request = Pair.Value;
         const int32 ZoneID = Pair.Key;
     
-        // Проверяем приоритет
+
   if (Request.Priority > OutPriority)
         {
- // Новый наивысший приоритет - берём эту зону
+
             OutPriority = Request.Priority;
             OutRequest = Request;
    SelectedZoneID = ZoneID;
@@ -740,7 +740,7 @@ bool UMusicManager::FindHighestPriorityZone(FMusicRequest& OutRequest, int32& Ou
     }
    else if (Request.Priority == OutPriority && ZoneID > SelectedZoneID)
         {
-        // ? Одинаковый приоритет - берём зону с большим ID (новее)
+
             OutRequest = Request;
 SelectedZoneID = ZoneID;
         UE_LOG(LogMusicManager, Log, TEXT("?? Same priority %d - selected newer zone ID=%d (%s)"),

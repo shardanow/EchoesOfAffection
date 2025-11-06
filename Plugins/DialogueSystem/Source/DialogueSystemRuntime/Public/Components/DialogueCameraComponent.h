@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -169,7 +169,7 @@ protected:
 
 	/** Dynamically track speaker during dialogue */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
-	bool bTrackSpeaker = false;  // Отключено по умолчанию - предотвращает дергание камеры
+	bool bTrackSpeaker = false;  
 
 	/** Update frequency for speaker tracking (seconds) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera", meta = (ClampMin = "0.01", ClampMax = "2"))

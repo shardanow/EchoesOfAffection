@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Conditions/MemoryConditions.h"
 #include "GameFramework/Actor.h"
 
-// NPCMemoryComponent находится в DialogueSystemRuntime модуле
-// Мы не можем напрямую включить его из Core модуля
-// Поэтому используем только публичные методы через интерфейс
+
+
 
 bool UHasMemoryCondition::EvaluateCondition_Implementation(AActor* NPCActor) const
 {
@@ -13,8 +12,6 @@ bool UHasMemoryCondition::EvaluateCondition_Implementation(AActor* NPCActor) con
 	{
 		return false;
 	}
-
-	// Ищем компонент по имени класса
 	UClass* MemoryCompClass = FindObject<UClass>(nullptr, TEXT("/Script/DialogueSystemRuntime.NPCMemoryComponent"));
 	if (!MemoryCompClass)
 	{
@@ -26,8 +23,6 @@ bool UHasMemoryCondition::EvaluateCondition_Implementation(AActor* NPCActor) con
 	{
 		return false;
 	}
-
-	// Используем рефлексию для вызова метода HasMemoryOfTag
 	UFunction* HasMemoryFunc = MemoryComp->FindFunction(TEXT("HasMemoryOfTag"));
 	if (!HasMemoryFunc)
 	{

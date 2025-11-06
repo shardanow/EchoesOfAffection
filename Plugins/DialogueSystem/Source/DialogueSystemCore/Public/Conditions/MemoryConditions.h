@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -17,7 +17,6 @@ struct FNPCMemoryEntry;
 struct FConversationTopic;
 
 /**
- * Базовый класс для условия диалога, работающего с памятью NPC
  */
 UCLASS(Abstract, Blueprintable, EditInlineNew, DefaultToInstanced)
 class DIALOGUESYSTEMCORE_API UMemoryConditionBase : public UObject
@@ -25,14 +24,13 @@ class DIALOGUESYSTEMCORE_API UMemoryConditionBase : public UObject
     GENERATED_BODY()
 
 public:
-    /** Вычислить условие для NPC */
+
     UFUNCTION(BlueprintNativeEvent, Category = "Dialogue|Condition")
     bool EvaluateCondition(AActor* NPCActor) const;
     virtual bool EvaluateCondition_Implementation(AActor* NPCActor) const { return true; }
 };
 
 /**
- * Проверяет наличие памяти с определенным тегом
  */
 UCLASS(DisplayName = "Has Memory", meta = (Category = "Memory"))
 class DIALOGUESYSTEMCORE_API UHasMemoryCondition : public UMemoryConditionBase
@@ -40,7 +38,7 @@ class DIALOGUESYSTEMCORE_API UHasMemoryCondition : public UMemoryConditionBase
 	GENERATED_BODY()
 
 public:
-	/** Тег памяти для проверки */
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
 	FGameplayTag MemoryTag;
 
@@ -48,7 +46,6 @@ public:
 };
 
 /**
- * Проверяет силу памяти
  */
 UENUM(BlueprintType)
 enum class EMemoryComparisonType : uint8
@@ -66,15 +63,15 @@ class DIALOGUESYSTEMCORE_API UMemoryStrengthCondition : public UMemoryConditionB
 	GENERATED_BODY()
 
 public:
-	/** Тег памяти для проверки */
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
 	FGameplayTag MemoryTag;
 
-	/** Тип сравнения */
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
 	EMemoryComparisonType ComparisonType = EMemoryComparisonType::GreaterOrEqual;
 
-	/** Целевая сила памяти */
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float TargetStrength = 0.5f;
 
@@ -82,7 +79,6 @@ public:
 };
 
 /**
- * Проверяет деградацию памяти
  */
 UCLASS(DisplayName = "Memory Decay", meta = (Category = "Memory"))
 class DIALOGUESYSTEMCORE_API UMemoryDecayCondition : public UMemoryConditionBase
@@ -90,15 +86,15 @@ class DIALOGUESYSTEMCORE_API UMemoryDecayCondition : public UMemoryConditionBase
 	GENERATED_BODY()
 
 public:
-	/** Тег памяти для проверки */
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
 	FGameplayTag MemoryTag;
 
-	/** Порог деградации */
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float DecayThreshold = 0.3f;
 
-	/** Проверять что память деградировала (true) или еще не деградировала (false) */
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
 	bool bCheckForDecayed = true;
 
@@ -106,7 +102,6 @@ public:
 };
 
 /**
- * Проверяет недавность памяти
  */
 UCLASS(DisplayName = "Recent Memory", meta = (Category = "Memory"))
 class DIALOGUESYSTEMCORE_API URecentMemoryCondition : public UMemoryConditionBase
@@ -114,13 +109,13 @@ class DIALOGUESYSTEMCORE_API URecentMemoryCondition : public UMemoryConditionBas
 	GENERATED_BODY()
 
 public:
-	/** Тег памяти для проверки */
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
 	FGameplayTag MemoryTag;
 
-	/** Максимальное время с последнего обновления (в секундах) */
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
-	float MaxTimeSinceUpdate = 300.0f; // 5 минут по умолчанию
+	float MaxTimeSinceUpdate = 300.0f; 
 
 	virtual bool EvaluateCondition_Implementation(AActor* NPCActor) const override;
 };

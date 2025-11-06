@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+п»ї// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,17 +19,17 @@ class UMemoryToRelationshipMapping;
 #if 0 // Disabled for now
 
 /**
- * Bridge для интеграции между системами через GameEventBus
+ * Bridge for integration between systems via GameEventBus
  * 
- * Функции:
- * 1. NPCMemory ? RelationshipSystem (память влияет на отношения)
- * 2. RelationshipSystem ? NPCMemory (изменения создают воспоминания)
- * 3. Полностью data-driven через UMemoryToRelationshipMapping
+ * Features:
+ * 1. NPCMemory to RelationshipSystem (memory affects relationship)
+ * 2. RelationshipSystem to NPCMemory (relationship creates memories)
+ * 3. Data-driven configuration via UMemoryToRelationshipMapping
  * 
  * Soft dependency:
- * - Проверяет наличие GameEventBus runtime
- * - Может работать без NPCMemoryComponent
- * - Конфигурируется через Data Assets
+ * - Requires GameEventBus runtime
+ * - Works with NPCMemoryComponent
+ * - Configured via Data Assets
  */
 UCLASS()
 class RELATIONSHIPSYSTEMCORE_API URelationshipSystemBridge : public UGameInstanceSubsystem
@@ -43,30 +43,30 @@ public:
 	//~ End USubsystem Interface
 
 protected:
-	/** Проверяем доступность GameEventBus */
+	/** Is GameEventBus available */
 	bool bGameEventBusAvailable = false;
 
-	/** Кешированный RelationshipSubsystem */
+	/** Cached relationship subsystem */
 	UPROPERTY(Transient)
 	TObjectPtr<URelationshipSubsystem> RelationshipSubsystem;
 
-	/** Data Asset с маппингом Memory ? Relationship */
+	/** Mapping configuration */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Integration", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UMemoryToRelationshipMapping> MappingConfig;
 
-	/** Таймер для периодической синхронизации */
+	/** Time since last sync */
 	float TimeSinceLastSync = 0.0f;
 
 protected:
-	/** Настройка слушателей событий */
+	/** Setup event listeners */
 	void SetupEventListeners();
 
-	/** Очистка слушателей */
+	/** Cleanup event listeners */
 	void CleanupEventListeners();
 
 	//~ Begin GameEventBus Listeners
 
-	/** Callback: событие создания памяти */
+	/** Handle memory event */
 	UFUNCTION()
 	void OnMemoryEventReceived(const FGameEvent& Event);
 
@@ -74,30 +74,30 @@ protected:
 
 	//~ Begin RelationshipSubsystem Listeners
 
-	/** Callback: изменение dimension */
+	/** Handle dimension change */
 	UFUNCTION()
 	void OnDimensionChanged(AActor* Subject, AActor* Target, FGameplayTag DimensionTag, float NewValue);
 
-	/** Callback: переход состояния */
+	/** Handle state transition */
 	UFUNCTION()
 	void OnStateTransitioned(AActor* Subject, AActor* Target, FGameplayTag OldState, FGameplayTag NewState);
 
-	/** Callback: добавление trait */
+	/** Handle trait added */
 	UFUNCTION()
 	void OnTraitAdded(AActor* Subject, AActor* Target, FGameplayTag TraitTag);
 
-	/** Callback: выполнение action */
+	/** Handle action executed */
 	UFUNCTION()
 	void OnActionExecuted(AActor* Subject, AActor* Target, FGameplayTag ActionTag);
 
 	//~ End RelationshipSubsystem Listeners
 
 protected:
-	//~ Begin Memory ? Relationship Logic
+	//~ Begin Memory to Relationship Logic
 
 	/**
-	 * Конвертировать память в изменение отношений
-	 * Использует MappingConfig для data-driven логики
+	 * Convert memory to relationship change
+	 * Uses MappingConfig for data-driven logic
 	 */
 	void ConvertMemoryToRelationshipChange(
 		AActor* NPC, 
@@ -108,7 +108,7 @@ protected:
 		const FString& Emotion);
 
 	/**
-	 * Применить эмоциональные модификаторы к dimensions
+	 * Apply emotion modifiers to dimensions
 	 */
 	void ApplyEmotionModifiers(
 		AActor* NPC,
@@ -116,12 +116,12 @@ protected:
 		const FString& Emotion,
 		float Importance);
 
-	//~ End Memory ? Relationship Logic
+	//~ End Memory to Relationship Logic
 
-	//~ Begin Relationship ? Memory Logic
+	//~ Begin Relationship to Memory Logic
 
 	/**
-	 * Создать воспоминание об изменении отношений
+	 * Create memory from relationship change
 	 */
 	void CreateMemoryFromRelationshipChange(
 		AActor* NPC,
@@ -130,7 +130,7 @@ protected:
 		float NewValue);
 
 	/**
-	 * Создать воспоминание о смене состояния
+	 * Create memory from state transition
 	 */
 	void CreateMemoryFromStateTransition(
 		AActor* NPC,
@@ -139,29 +139,29 @@ protected:
 		FGameplayTag NewState);
 
 	/**
-	 * Рассчитать важность воспоминания на основе изменения
+	 * Calculate memory importance based on relationship
 	 */
 	float CalculateMemoryImportance(FGameplayTag DimensionTag, float Value) const;
 
 	/**
-	 * Определить эмоцию для воспоминания
+	 * Determine emotion for memory
 	 */
 	FString DetermineMemoryEmotion(FGameplayTag DimensionTag, float Value) const;
 
 	/**
-	 * Сгенерировать описание воспоминания
+	 * Generate memory description
 	 */
 	FText GenerateMemoryDescription(
 		FGameplayTag DimensionTag, 
 		float Value,
 		AActor* Target) const;
 
-	//~ End Relationship ? Memory Logic
+	//~ End Relationship to Memory Logic
 
 	//~ Begin GameEventBus Integration
 
 	/**
-	 * Broadcast события для других систем
+	 * Broadcast event to other systems
 	 */
 	void BroadcastRelationshipEvent(
 		FGameplayTag EventTag,
@@ -172,15 +172,15 @@ protected:
 	//~ End GameEventBus Integration
 
 public:
-	/** Проверить доступность GameEventBus */
+	/** Check if GameEventBus is available */
 	UFUNCTION(BlueprintPure, Category = "Relationship System|Integration")
 	bool IsGameEventBusAvailable() const;
 
-	/** Установить конфиг маппинга */
+	/** Set mapping config */
 	UFUNCTION(BlueprintCallable, Category = "Relationship System|Integration")
 	void SetMappingConfig(UMemoryToRelationshipMapping* NewConfig) { MappingConfig = NewConfig; }
 
-	/** Получить конфиг маппинга */
+	/** Get mapping config */
 	UFUNCTION(BlueprintPure, Category = "Relationship System|Integration")
 	UMemoryToRelationshipMapping* GetMappingConfig() const { return MappingConfig; }
 };

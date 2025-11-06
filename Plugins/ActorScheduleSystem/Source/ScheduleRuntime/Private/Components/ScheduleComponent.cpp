@@ -10,11 +10,29 @@
 #include "Selectors/ScheduleLocationSelectorBase.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
+#include "AIController.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
+
+// GameEventBus integration (soft dependency)
+#if WITH_GAMEEVENTBUS
+#include "GameEventBusSubsystem.h" // includes UDialogueAdditionalActors
+#endif
+
+// DialogueSystem integration (soft dependency via reflection - NO HARD LINK!)
+// We use FindComponentByClass + Execute_GetParticipantId to avoid circular dependency
+class UDialogueComponent; // Forward declaration only!
+class IDialogueParticipant; // Forward declaration only!
+
+DEFINE_LOG_CATEGORY_STATIC(LogScheduleComponent, Log, All);
 
 UScheduleComponent::UScheduleComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false; // Event-driven, no tick needed
 	bWantsInitializeComponent = true;
+	
+	// ✅ NEW v1.14: Default behavior - only pause if involved
+	bPauseDuringAnyDialogue = false;
 }
 
 void UScheduleComponent::BeginPlay()
@@ -25,10 +43,16 @@ void UScheduleComponent::BeginPlay()
 	{
 		ScheduleSubsystem = World->GetSubsystem<UScheduleSubsystem>();
 	}
+
+	// ✅ Subscribe to Dialogue events from GameEventBus (if available)
+	SubscribeToDialogueEvents();
 }
 
 void UScheduleComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// ✅ Unsubscribe from Dialogue events
+	UnsubscribeFromDialogueEvents();
+
 	// Cancel any active actions
 	if (CurrentActionHandle.IsValid() && CurrentEntry && CurrentEntry->Action)
 	{
@@ -365,25 +389,72 @@ void UScheduleComponent::PauseSchedule()
 {
 	bIsPaused = true;
 
+	UE_LOG(LogScheduleComponent, Warning, TEXT("[PAUSE] Pausing schedule for actor: %s"), 
+		GetOwner() ? *GetOwner()->GetName() : TEXT("NULL"));
+
 	if (CurrentActionHandle.IsValid() && CurrentEntry && CurrentEntry->Action)
 	{
-		// Use Execute_ wrapper for Blueprint interface compatibility
+		// Pause current action
 		IScheduleActionInterface::Execute_PauseAction(CurrentEntry->Action, CurrentActionHandle);
+		
+		UE_LOG(LogScheduleComponent, Warning, TEXT("[PAUSE]   Current action paused: %s"), 
+		CurrentEntry ? *CurrentEntry->GetDisplayText().ToString() : TEXT("NULL"));
+	}
+
+	// ✅ AGGRESSIVE STOP: Force stop movement immediately
+	AActor* Owner = GetOwner();
+	if (Owner)
+	{
+		// Stop AI movement
+		if (APawn* Pawn = Cast<APawn>(Owner))
+		{
+			if (AAIController* AIController = Cast<AAIController>(Pawn->GetController()))
+			{
+				AIController->StopMovement();
+				UE_LOG(LogScheduleComponent, Warning, TEXT("[PAUSE]   Stopped AI movement"));
+			}
+		}
+
+		// Stop character movement component
+		if (ACharacter* Character = Cast<ACharacter>(Owner))
+		{
+			if (UCharacterMovementComponent* MovementComp = Character->GetCharacterMovement())
+			{
+				MovementComp->StopMovementImmediately();
+				UE_LOG(LogScheduleComponent, Warning, TEXT("[PAUSE]   Stopped CharacterMovementComponent"));
+			}
+		}
 	}
 }
 
 void UScheduleComponent::ResumeSchedule()
 {
-	bIsPaused = false;
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[RESUME] Resuming schedule for actor: %s (was paused: %s)"), 
+		GetOwner() ? *GetOwner()->GetName() : TEXT("NULL"),
+        bIsPaused ? TEXT("YES") : TEXT("NO"));
 
-	if (CurrentActionHandle.IsValid() && CurrentEntry && CurrentEntry->Action)
-	{
-		// Use Execute_ wrapper for Blueprint interface compatibility
-		IScheduleActionInterface::Execute_ResumeAction(CurrentEntry->Action, CurrentActionHandle);
-	}
+    bIsPaused = false;
 
-	// Re-evaluate to catch up with time
-	EvaluateSchedule();
+    if (CurrentActionHandle.IsValid() && CurrentEntry && CurrentEntry->Action)
+    {
+      // Use Execute_ wrapper for Blueprint interface compatibility
+        IScheduleActionInterface::Execute_ResumeAction(CurrentEntry->Action, CurrentActionHandle);
+ 
+ UE_LOG(LogScheduleComponent, Warning, TEXT("[RESUME]   Current action resumed: %s"), 
+        CurrentEntry ? *CurrentEntry->GetDisplayText().ToString() : TEXT("NULL"));
+    
+        // ✅ FIX: DON'T re-evaluate immediately if we have an active action!
+        // Let the action complete naturally, THEN schedule will re-evaluate
+        UE_LOG(LogScheduleComponent, Warning, TEXT("[RESUME]   Action still active - skipping re-evaluation"));
+UE_LOG(LogScheduleComponent, Warning, TEXT("[RESUME]   Done! (action continues)"));
+    }
+    else
+    {
+        // No active action - re-evaluate to find new task
+        UE_LOG(LogScheduleComponent, Warning, TEXT("[RESUME]   No active action - re-evaluating schedule..."));
+   EvaluateSchedule();
+   UE_LOG(LogScheduleComponent, Warning, TEXT("[RESUME]   Done! (new action started)"));
+    }
 }
 
 void UScheduleComponent::SetScheduleData(UScheduleData* NewScheduleData, bool bCancelCurrent)
@@ -398,3 +469,341 @@ void UScheduleComponent::SetScheduleData(UScheduleData* NewScheduleData, bool bC
 	// Trigger evaluation with new data
 	EvaluateSchedule();
 }
+
+//==============================================================================
+// GameEventBus Integration (Dialogue System soft coupling)
+//==============================================================================
+
+void UScheduleComponent::SubscribeToDialogueEvents()
+{
+#if WITH_GAMEEVENTBUS
+    UWorld* World = GetWorld();
+  if (!World)
+    {
+        UE_LOG(LogScheduleComponent, Warning, TEXT("[SUBSCRIBE] Cannot subscribe: World is null"));
+        return;
+ }
+
+    UGameEventBusSubsystem* EventBus = UGameEventBusSubsystem::Get(World);
+    if (!EventBus)
+    {
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[SUBSCRIBE] GameEventBus not available - dialogue integration disabled"));
+        return;
+    }
+
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[SUBSCRIBE] ============================================"));
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[SUBSCRIBE] Subscribing to Dialogue & Sequence events for actor: %s"), 
+        GetOwner() ? *GetOwner()->GetName() : TEXT("NULL"));
+
+    // Subscribe to Dialogue.Started event
+ FGameplayTag DialogueStartedTag = FGameplayTag::RequestGameplayTag(FName("GameEvent.Dialogue.Started"));
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[SUBSCRIBE]   Tag 'GameEvent.Dialogue.Started' valid: %s"), 
+        DialogueStartedTag.IsValid() ? TEXT("YES") : TEXT("NO"));
+    
+    DialogueStartedHandle = EventBus->SubscribeToEventNative(DialogueStartedTag,
+   FGameEventNativeDelegate::FDelegate::CreateUObject(this, &UScheduleComponent::OnDialogueStarted));
+    
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[SUBSCRIBE]   Subscribed to 'Dialogue.Started' (Handle valid: %s)"),
+        DialogueStartedHandle.IsValid() ? TEXT("YES") : TEXT("NO"));
+
+    // Subscribe to Dialogue.Ended event
+    FGameplayTag DialogueEndedTag = FGameplayTag::RequestGameplayTag(FName("GameEvent.Dialogue.Ended"));
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[SUBSCRIBE]   Tag 'GameEvent.Dialogue.Ended' valid: %s"), 
+        DialogueEndedTag.IsValid() ? TEXT("YES") : TEXT("NO"));
+    
+    DialogueEndedHandle = EventBus->SubscribeToEventNative(DialogueEndedTag,
+        FGameEventNativeDelegate::FDelegate::CreateUObject(this, &UScheduleComponent::OnDialogueEnded));
+
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[SUBSCRIBE]   Subscribed to 'Dialogue.Ended' (Handle valid: %s)"),
+        DialogueEndedHandle.IsValid() ? TEXT("YES") : TEXT("NO"));
+    
+    // ✅ NEW v1.13.3: Subscribe to Sequence.Started event
+    FGameplayTag SequenceStartedTag = FGameplayTag::RequestGameplayTag(FName("GameEvent.Sequence.Started"));
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[SUBSCRIBE]   Tag 'GameEvent.Sequence.Started' valid: %s"), 
+        SequenceStartedTag.IsValid() ? TEXT("YES") : TEXT("NO"));
+    
+    SequenceStartedHandle = EventBus->SubscribeToEventNative(SequenceStartedTag,
+   FGameEventNativeDelegate::FDelegate::CreateUObject(this, &UScheduleComponent::OnSequenceStarted));
+    
+  UE_LOG(LogScheduleComponent, Warning, TEXT("[SUBSCRIBE]   Subscribed to 'Sequence.Started' (Handle valid: %s)"),
+        SequenceStartedHandle.IsValid() ? TEXT("YES") : TEXT("NO"));
+    
+    // ✅ NEW v1.13.3: Subscribe to Sequence.Ended event
+    FGameplayTag SequenceEndedTag = FGameplayTag::RequestGameplayTag(FName("GameEvent.Sequence.Ended"));
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[SUBSCRIBE]   Tag 'GameEvent.Sequence.Ended' valid: %s"), 
+ SequenceEndedTag.IsValid() ? TEXT("YES") : TEXT("NO"));
+    
+    SequenceEndedHandle = EventBus->SubscribeToEventNative(SequenceEndedTag,
+     FGameEventNativeDelegate::FDelegate::CreateUObject(this, &UScheduleComponent::OnSequenceEnded));
+  
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[SUBSCRIBE]   Subscribed to 'Sequence.Ended' (Handle valid: %s)"),
+        SequenceEndedHandle.IsValid() ? TEXT("YES") : TEXT("NO"));
+    
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[SUBSCRIBE] Subscription complete!"));
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[SUBSCRIBE] ============================================"));
+#else
+    UE_LOG(LogScheduleComponent, Verbose, TEXT("GameEventBus not compiled - dialogue integration disabled"));
+#endif
+}
+
+void UScheduleComponent::UnsubscribeFromDialogueEvents()
+{
+#if WITH_GAMEEVENTBUS
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	UGameEventBusSubsystem* EventBus = UGameEventBusSubsystem::Get(World);
+	if (!EventBus)
+	{
+		return;
+	}
+
+	// Unsubscribe from dialogue events
+	if (DialogueStartedHandle.IsValid())
+	{
+		FGameplayTag DialogueStartedTag = FGameplayTag::RequestGameplayTag(FName("GameEvent.Dialogue.Started"));
+		EventBus->UnsubscribeNative(DialogueStartedTag, DialogueStartedHandle);
+		DialogueStartedHandle.Reset();
+	}
+
+	if (DialogueEndedHandle.IsValid())
+	{
+		FGameplayTag DialogueEndedTag = FGameplayTag::RequestGameplayTag(FName("GameEvent.Dialogue.Ended"));
+		EventBus->UnsubscribeNative(DialogueEndedTag, DialogueEndedHandle);
+		DialogueEndedHandle.Reset();
+	}
+	
+	// ✅ NEW v1.13.3: Unsubscribe from sequence events
+	if (SequenceStartedHandle.IsValid())
+	{
+		FGameplayTag SequenceStartedTag = FGameplayTag::RequestGameplayTag(FName("GameEvent.Sequence.Started"));
+		EventBus->UnsubscribeNative(SequenceStartedTag, SequenceStartedHandle);
+		SequenceStartedHandle.Reset();
+	}
+
+	if (SequenceEndedHandle.IsValid())
+	{
+		FGameplayTag SequenceEndedTag = FGameplayTag::RequestGameplayTag(FName("GameEvent.Sequence.Ended"));
+		EventBus->UnsubscribeNative(SequenceEndedTag, SequenceEndedHandle);
+		SequenceEndedHandle.Reset();
+	}
+#endif
+}
+
+#if WITH_GAMEEVENTBUS
+void UScheduleComponent::OnDialogueStarted(const FGameEventPayload& Payload)
+{
+    // Check if this actor is involved in the dialogue
+    AActor* Owner = GetOwner();
+    if (!Owner)
+ {
+        return;
+    }
+
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[EVENT] OnDialogueStarted received for actor: %s"), *Owner->GetName());
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[EVENT]   DialogueId: %s"), *Payload.StringParam.ToString());
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[EVENT]   InstigatorActor: %s"), 
+        Payload.InstigatorActor.IsValid() ? *Payload.InstigatorActor->GetName() : TEXT("NULL"));
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[EVENT]   TargetActor: %s"), 
+        Payload.TargetActor.IsValid() ? *Payload.TargetActor->GetName() : TEXT("NULL"));
+
+  // ✅ v1.14: Option 1 - Pause ALL NPCs during ANY dialogue
+    if (bPauseDuringAnyDialogue)
+    {
+        UE_LOG(LogScheduleComponent, Warning, TEXT("[EVENT] bPauseDuringAnyDialogue=TRUE - pausing schedule"));
+        PauseSchedule();
+        return;
+    }
+
+ // ✅ v1.14: Option 2 - Only pause if this actor is a participant (DEFAULT behavior)
+    // - Direct participant: InstigatorActor (Player) or TargetActor (NPC)
+    // - Additional participant: Listed in AdditionalActors (sequence actors, etc.)
+    bool bIsInvolvedInDialogue = (Payload.TargetActor == Owner) || (Payload.InstigatorActor == Owner);
+
+    // ✅ v1.13.2: Check AdditionalActors array (sequence participants, etc.)
+    if (!bIsInvolvedInDialogue && Payload.AdditionalActors.Num() > 0)
+    {
+        bIsInvolvedInDialogue = Payload.AdditionalActors.Contains(Owner);
+        if (bIsInvolvedInDialogue)
+ {
+            UE_LOG(LogScheduleComponent, Warning, TEXT("[EVENT]   Found in AdditionalActors (sequence/additional participant)"));
+      }
+    }
+
+    // ✅ NEW v1.14: Check AdditionalPersonaIds array (DialogueDataAsset AdditionalPersonas)
+    if (!bIsInvolvedInDialogue && Payload.AdditionalPersonaIds.Num() > 0)
+    {
+        // Get DialogueComponent from owner (via reflection - NO HARD DEPENDENCY!)
+    // Use FindObject to get class without #include
+ UClass* DialogueComponentClass = FindObject<UClass>(nullptr, TEXT("/Script/DialogueSystemRuntime.DialogueComponent"));
+        if (DialogueComponentClass)
+{
+   UActorComponent* DialogueComp = Owner->GetComponentByClass(DialogueComponentClass);
+   if (DialogueComp)
+ {
+         // Get CharacterId via UFunction call (reflection)
+       UFunction* GetParticipantIdFunc = DialogueComp->FindFunction(FName("GetParticipantId"));
+          if (GetParticipantIdFunc)
+       {
+      FName MyCharacterId = NAME_None;
+        DialogueComp->ProcessEvent(GetParticipantIdFunc, &MyCharacterId);
+         
+  // Check if my CharacterId matches any AdditionalPersonaId
+     for (const FString& PersonaIdStr : Payload.AdditionalPersonaIds)
+          {
+             if (MyCharacterId == FName(*PersonaIdStr))
+{
+     bIsInvolvedInDialogue = true;
+ UE_LOG(LogScheduleComponent, Warning, TEXT("[EVENT]   ✅ Found in AdditionalPersonaIds (PersonaId='%s')"), 
+      *PersonaIdStr);
+ break;
+ }
+     }
+  }
+      }
+     }
+    }
+
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[EVENT]   bIsInvolvedInDialogue: %s"), 
+  bIsInvolvedInDialogue ? TEXT("YES") : TEXT("NO"));
+
+    if (bIsInvolvedInDialogue)
+    {
+        UE_LOG(LogScheduleComponent, Warning, TEXT("[EVENT] Dialogue started - pausing schedule for actor: %s (DialogueId: %s)"),
+           *Owner->GetName(), *Payload.StringParam.ToString());
+
+        // Pause schedule
+ PauseSchedule();
+    }
+}
+
+void UScheduleComponent::OnDialogueEnded(const FGameEventPayload& Payload)
+{
+    // Check if this actor was involved in the dialogue
+    AActor* Owner = GetOwner();
+    if (!Owner)
+    {
+        return;
+    }
+
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[EVENT] OnDialogueEnded received for actor: %s"), *Owner->GetName());
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[EVENT]   InstigatorActor: %s"), 
+        Payload.InstigatorActor.IsValid() ? *Payload.InstigatorActor->GetName() : TEXT("NULL"));
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[EVENT]   TargetActor: %s"), 
+        Payload.TargetActor.IsValid() ? *Payload.TargetActor->GetName() : TEXT("NULL"));
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[EVENT]   bIsPaused: %s"), bIsPaused ? TEXT("YES") : TEXT("NO"));
+
+    // ✅ v1.14: If bPauseDuringAnyDialogue=true, always resume if paused
+    if (bPauseDuringAnyDialogue && bIsPaused)
+    {
+        UE_LOG(LogScheduleComponent, Warning, TEXT("[EVENT] bPauseDuringAnyDialogue=TRUE - resuming schedule"));
+        ResumeSchedule();
+        return;
+    }
+
+    // ✅ v1.14: Only resume if this actor was a participant (DEFAULT behavior)
+    bool bWasInvolvedInDialogue = (Payload.TargetActor == Owner) || (Payload.InstigatorActor == Owner);
+
+    // Check AdditionalActors
+   if (!bWasInvolvedInDialogue && Payload.AdditionalActors.Num() > 0)
+    {
+        bWasInvolvedInDialogue = Payload.AdditionalActors.Contains(Owner);
+    }
+
+    // ✅ NEW v1.14: Check AdditionalPersonaIds
+    if (!bWasInvolvedInDialogue && Payload.AdditionalPersonaIds.Num() > 0)
+  {
+        UClass* DialogueComponentClass = FindObject<UClass>(nullptr, TEXT("/Script/DialogueSystemRuntime.DialogueComponent"));
+        if (DialogueComponentClass)
+  {
+       UActorComponent* DialogueComp = Owner->GetComponentByClass(DialogueComponentClass);
+    if (DialogueComp)
+{
+       UFunction* GetParticipantIdFunc = DialogueComp->FindFunction(FName("GetParticipantId"));
+      if (GetParticipantIdFunc)
+ {
+     FName MyCharacterId = NAME_None;
+     DialogueComp->ProcessEvent(GetParticipantIdFunc, &MyCharacterId);
+       
+  for (const FString& PersonaIdStr : Payload.AdditionalPersonaIds)
+ {
+           if (MyCharacterId == FName(*PersonaIdStr))
+          {
+        bWasInvolvedInDialogue = true;
+         break;
+     }
+     }
+   }
+  }
+       }
+    }
+
+    UE_LOG(LogScheduleComponent, Warning, TEXT("[EVENT]   bWasInvolvedInDialogue: %s"), 
+        bWasInvolvedInDialogue ? TEXT("YES") : TEXT("NO"));
+
+  if (bWasInvolvedInDialogue && bIsPaused)
+    {
+        UE_LOG(LogScheduleComponent, Warning, TEXT("[EVENT] Dialogue ended - resuming schedule for actor: %s from position: %s"),
+      *Owner->GetName(), *Owner->GetActorLocation().ToString());
+
+     // Resume schedule from CURRENT POSITION (не восстанавливаем позицию!)
+     ResumeSchedule();
+    }
+    else if (bWasInvolvedInDialogue && !bIsPaused)
+    {
+        UE_LOG(LogScheduleComponent, Error, TEXT("[EVENT] ERROR: Actor was involved but NOT paused! This should not happen!"));
+    }
+}
+
+void UScheduleComponent::OnSequenceStarted(const FGameEventPayload& Payload)
+{
+	AActor* Owner = GetOwner();
+	if (!Owner)
+	{
+		return;
+	}
+
+	UE_LOG(LogScheduleComponent, Warning, TEXT("[SEQUENCE] OnSequenceStarted received for actor: %s"), *Owner->GetName());
+	UE_LOG(LogScheduleComponent, Warning, TEXT("[SEQUENCE]   Sequence: %s"), *Payload.StringParam.ToString());
+	UE_LOG(LogScheduleComponent, Warning, TEXT("[SEQUENCE]   Sequence Participants: %d"), Payload.AdditionalActors.Num());
+
+	// Check if this actor is a sequence participant
+	bool bIsParticipant = Payload.AdditionalActors.Contains(Owner);
+
+	UE_LOG(LogScheduleComponent, Warning, TEXT("[SEQUENCE]   bIsParticipant: %s"), 
+		bIsParticipant ? TEXT("YES") : TEXT("NO"));
+
+	if (bIsParticipant)
+	{
+		UE_LOG(LogScheduleComponent, Warning, TEXT("[SEQUENCE] Actor is sequence participant - pausing schedule"));
+		PauseSchedule();
+	}
+}
+
+void UScheduleComponent::OnSequenceEnded(const FGameEventPayload& Payload)
+{
+	AActor* Owner = GetOwner();
+	if (!Owner)
+	{
+		return;
+	}
+
+	UE_LOG(LogScheduleComponent, Warning, TEXT("[SEQUENCE] OnSequenceEnded received for actor: %s"), *Owner->GetName());
+
+	// Check if this actor was a sequence participant
+	bool bWasParticipant = Payload.AdditionalActors.Contains(Owner);
+
+	UE_LOG(LogScheduleComponent, Warning, TEXT("[SEQUENCE]   bWasParticipant: %s"), 
+		bWasParticipant ? TEXT("YES") : TEXT("NO"));
+
+	if (bWasParticipant && bIsPaused)
+	{
+		UE_LOG(LogScheduleComponent, Warning, TEXT("[SEQUENCE] Sequence ended - resuming schedule for actor: %s"), 
+			*Owner->GetName());
+		ResumeSchedule();
+	}
+}
+#endif // WITH_GAMEEVENTBUS
