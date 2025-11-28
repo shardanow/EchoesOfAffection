@@ -287,6 +287,9 @@ protected:
     /** NEW v1.13: Emit GameEventBus event for dialogue end */
     void EmitDialogueEndedEvent(FName DialogueId);
 
+    /** NEW v1.17.1: Emit GameEventBus event when node is entered (for camera system) */
+    void EmitNodeEnteredEvent(UDialogueNode* Node);
+
     /** NEW v1.13.2: Gather all sequence participants from all dialogue nodes */
     TArray<AActor*> GatherAllSequenceParticipants() const;
 

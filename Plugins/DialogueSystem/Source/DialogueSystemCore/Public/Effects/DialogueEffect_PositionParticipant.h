@@ -93,6 +93,9 @@ protected:
 		const FTransform& TargetTransform,
 		const FString& AdditionalInfo = TEXT("")
 	) const;
+
+	/** NEW v1.17.1: Emit GameEventBus event after positioning completes */
+	void EmitParticipantPositionedEvent(UDialogueSessionContext* Context, FName ParticipantId);
 };
 
 /**

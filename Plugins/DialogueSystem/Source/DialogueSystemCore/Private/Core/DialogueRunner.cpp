@@ -605,20 +605,23 @@ void UDialogueRunner::ProcessNode(UDialogueNode* Node)
         // Broadcast event first so UI can show the end node text
         OnNodeEntered.Broadcast(Node);
         
+        // NEW v1.17.1: Emit GameEventBus event for camera
+        EmitNodeEnteredEvent(Node);
+        
 // CRITICAL: Transition back to Active
         // This allows UI to process the End node normally (show text, wait for input)
  if (StateMachine && StateMachine->GetCurrentState() == EDialogueState::Transitioning)
-      {
+  {
             StateMachine->TransitionTo(EDialogueState::Active, TEXT("End node - awaiting player confirmation"));
         }
      
         // DON'T auto-close - let UI show continue indicator
         // Player will manually close dialogue by clicking or pressing button
   // The dialogue will end when player calls Continue()
-        
+      
      // Optional: Setup auto-close timer if configured
       // This respects Node->bAutoAdvance and Node->AutoAdvanceDelay
-    SetupAutoAdvance(Node);
+  SetupAutoAdvance(Node);
       
         return;
   
@@ -626,8 +629,11 @@ void UDialogueRunner::ProcessNode(UDialogueNode* Node)
      break;
     }
     
-    // Broadcast node entered event
+  // Broadcast node entered event
     OnNodeEntered.Broadcast(Node);
+  
+    // NEW v1.17.1: Emit GameEventBus event for camera system
+    EmitNodeEnteredEvent(Node);
   
     // Check for choices
     TArray<UDialogueNode*> Choices = GetAvailableChoices();
@@ -1078,6 +1084,76 @@ void UDialogueRunner::EmitDialogueEndedEvent(FName DialogueId)
 
 	// Emit event
 	EventBus->EmitEvent(Payload, true);
+
+#endif // WITH_GAMEEVENTBUS
+}
+
+//==============================================================================
+// NEW v1.17.1: GameEventBus Integration - Node Entered Event
+//==============================================================================
+
+void UDialogueRunner::EmitNodeEnteredEvent(UDialogueNode* Node)
+{
+#if WITH_GAMEEVENTBUS
+	if (!Node || !CurrentContext)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	UGameEventBusSubsystem* EventBus = UGameEventBusSubsystem::Get(World);
+	if (!EventBus)
+	{
+		return;
+	}
+
+	// Prepare payload
+	FGameEventPayload Payload;
+	Payload.EventTag = FGameplayTag::RequestGameplayTag(FName("GameEvent.Dialogue.NodeEntered"));
+	Payload.StringParam = Node->NodeId; // Node ID
+	
+	// NEW v1.17.1: Add speaker info for camera system
+	FName SpeakerId = Node->SpeakerId;
+	if (!SpeakerId.IsNone())
+	{
+		// Store SpeakerId in AdditionalPersonaIds[0] for camera to read
+		Payload.AdditionalPersonaIds.Add(SpeakerId.ToString());
+		
+		// Try to resolve speaker actor
+		UDialogueParticipants* Participants = CurrentContext->GetParticipants();
+		if (Participants)
+		{
+			AActor* SpeakerActor = Participants->GetActorByPersonaId(SpeakerId);
+			if (SpeakerActor)
+			{
+				Payload.TargetActor = SpeakerActor;
+				
+				UE_LOG(LogDialogueRunner, Log, TEXT("[GAMEEVENTBUS] Emitting NodeEntered: Node='%s', Speaker='%s', Actor='%s'"),
+					*Node->NodeId.ToString(),
+					*SpeakerId.ToString(),
+					*SpeakerActor->GetName());
+			}
+			else
+			{
+				UE_LOG(LogDialogueRunner, Warning, TEXT("[GAMEEVENTBUS] Emitting NodeEntered: Node='%s', Speaker='%s' (actor NOT found)"),
+					*Node->NodeId.ToString(),
+					*SpeakerId.ToString());
+			}
+		}
+	}
+	else
+	{
+		UE_LOG(LogDialogueRunner, Log, TEXT("[GAMEEVENTBUS] Emitting NodeEntered: Node='%s' (no speaker)"),
+			*Node->NodeId.ToString());
+	}
+
+	// Emit event for camera to listen
+	EventBus->EmitEvent(Payload, false);
 
 #endif // WITH_GAMEEVENTBUS
 }

@@ -13,6 +13,12 @@ class APlayerController;
 class APlayerCameraManager;
 class USpringArmComponent;
 
+// NEW v1.17.1: GameEventBus integration
+#if WITH_GAMEEVENTBUS
+class UGameEventBusSubsystem;
+struct FGameEventPayload;
+#endif
+
 /**
  * Camera blend modes for dialogue transitions
  */
@@ -119,6 +125,11 @@ struct DIALOGUESYSTEMRUNTIME_API FDialogueCameraSettings
 /**
  * Dialogue Camera Component
  * 
+ * v1.17.1: Added automatic camera synchronization after actor teleportation
+ * - Listens to GameEvent.Dialogue.ParticipantPositioned
+ * - Automatically updates camera when current speaker moves
+ * - Configurable delay for smooth repositioning
+ * 
  * Handles cinematic camera control during dialogues:
  * - Smooth camera transitions
  * - Multiple framing presets
@@ -174,6 +185,26 @@ protected:
 	/** Update frequency for speaker tracking (seconds) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera", meta = (ClampMin = "0.01", ClampMax = "2"))
 	float TrackingUpdateRate = 0.1f;
+
+	/** NEW v1.17.1: Auto-update camera when participant is positioned */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Auto Update")
+	bool bAutoUpdateOnPositioning = true;
+
+	/** NEW v1.17.1: Delay before camera update after positioning (allows positioning to settle) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Auto Update", meta = (ClampMin = "0", ClampMax = "2"))
+	float PositioningUpdateDelay = 0.2f;
+
+	/** NEW v1.17.1: Blend time for camera repositioning after teleport */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Auto Update", meta = (ClampMin = "0", ClampMax = "3"))
+	float PositioningBlendTime = 0.5f;
+
+	/** NEW v1.17.1: Auto-switch camera to current speaker when node changes */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Auto Update")
+	bool bAutoSwitchToSpeaker = true;
+
+	/** NEW v1.17.1: Blend time when switching to new speaker */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Auto Update", meta = (ClampMin = "0", ClampMax = "2"))
+	float SpeakerSwitchBlendTime = 0.6f;
 
 	//~ End Configuration
 
@@ -243,6 +274,15 @@ protected:
 
 	/** Original player camera location (for stable tracking) */
 	FVector OriginalPlayerLocation = FVector::ZeroVector;
+
+	/** NEW v1.17.1: Timer handle for delayed camera update after positioning */
+	FTimerHandle PositioningUpdateTimerHandle;
+
+	/** NEW v1.17.1: GameEventBus subscription handle */
+#if WITH_GAMEEVENTBUS
+	FDelegateHandle PositioningEventHandle;
+	FDelegateHandle NodeEnteredEventHandle;
+#endif
 
 	//~ End Runtime State
 
@@ -359,4 +399,25 @@ protected:
 
 	/** Find player camera manager */
 	APlayerCameraManager* FindPlayerCameraManager() const;
+
+	/** NEW v1.17.1: Subscribe to GameEventBus events */
+	void SubscribeToGameEvents();
+
+	/** NEW v1.17.1: Unsubscribe from GameEventBus events */
+	void UnsubscribeFromGameEvents();
+
+	/** NEW v1.17.1: Handle participant positioned event */
+	void OnParticipantPositioned(const FGameEventPayload& Payload);
+
+	/** NEW v1.17.1: Handle node entered event (speaker change) */
+	void OnNodeEntered(const FGameEventPayload& Payload);
+
+	/** NEW v1.17.1: Delayed camera update after positioning */
+	void UpdateCameraAfterPositioning();
+
+	/** NEW v1.17.1: Validate camera position (ensure target is in frame) */
+	bool ValidateCameraPosition(const FTransform& CameraTransform, AActor* TargetActor) const;
+
+	/** NEW v1.17.1: Check if actor is visible from camera position */
+	bool IsActorVisibleFromCamera(const FTransform& CameraTransform, AActor* TargetActor, float& OutVisibilityScore) const;
 };

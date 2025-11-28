@@ -18,6 +18,11 @@ class ADialogueLocationMarker;
 #include "Actors/DialogueLocationMarker.h"
 #include "Subsystems/DialogueLocationSubsystem.h"
 
+// NEW v1.17.1: GameEventBus integration for camera synchronization
+#if WITH_GAMEEVENTBUS
+#include "GameEventBusSubsystem.h"
+#endif
+
 DEFINE_LOG_CATEGORY(LogDialoguePositioning);
 
 UDialogueEffect_PositionParticipant::UDialogueEffect_PositionParticipant()
@@ -56,6 +61,9 @@ void UDialogueEffect_PositionParticipant::Execute_Implementation(UDialogueSessio
 
 	// Execute specific positioning implementation
 	ExecutePositioning(ParticipantActor, TargetTransform, Context);
+
+	// NEW v1.17.1: Emit event AFTER positioning completes
+	EmitParticipantPositionedEvent(Context, PositioningConfig.ParticipantId);
 }
 
 FText UDialogueEffect_PositionParticipant::GetDisplayText_Implementation() const
@@ -309,6 +317,49 @@ void UDialogueEffect_PositionParticipant::LogPositioningInfo(
 	{
 		UE_LOG(LogDialoguePositioning, Log, TEXT("  Info: %s"), *AdditionalInfo);
 	}
+}
+
+//==============================================================================
+// NEW v1.17.1: GameEventBus Integration - Participant Positioned Event
+//==============================================================================
+
+void UDialogueEffect_PositionParticipant::EmitParticipantPositionedEvent(UDialogueSessionContext* Context, FName ParticipantId)
+{
+#if WITH_GAMEEVENTBUS
+    if (!Context)
+    {
+        return;
+    }
+
+    UWorld* World = Context->GetWorld();
+    if (!World)
+    {
+        return;
+    }
+
+    UGameEventBusSubsystem* EventBus = UGameEventBusSubsystem::Get(World);
+    if (!EventBus)
+  {
+        return;
+  }
+
+    // Get participant actor
+    UDialogueParticipants* Participants = Context->GetParticipants();
+    AActor* ParticipantActor = Participants ? Participants->GetActorByPersonaId(ParticipantId) : nullptr;
+
+    // Prepare payload
+    FGameEventPayload Payload;
+    Payload.EventTag = FGameplayTag::RequestGameplayTag(FName("GameEvent.Dialogue.ParticipantPositioned"));
+ Payload.StringParam = ParticipantId;
+    Payload.TargetActor = ParticipantActor;
+
+    // Emit event for camera to listen
+    EventBus->EmitEvent(Payload, false);
+
+    UE_LOG(LogDialoguePositioning, Log, TEXT("[GAMEEVENTBUS] Emitted Dialogue.ParticipantPositioned for '%s'"), 
+        *ParticipantId.ToString());
+
+#endif // WITH_GAMEEVENTBUS
 }
 
 //==============================================================================

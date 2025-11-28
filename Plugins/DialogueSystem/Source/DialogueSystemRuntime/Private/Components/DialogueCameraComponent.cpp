@@ -12,6 +12,11 @@
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
 
+// NEW v1.17.1: GameEventBus integration
+#if WITH_GAMEEVENTBUS
+#include "GameEventBusSubsystem.h"
+#endif
+
 DEFINE_LOG_CATEGORY_STATIC(LogDialogueCamera, Log, All);
 
 UDialogueCameraComponent::UDialogueCameraComponent()
@@ -38,10 +43,16 @@ void UDialogueCameraComponent::BeginPlay()
 			CachedCameraManager = PC->PlayerCameraManager;
 		}
 	}
+
+	// NEW v1.17.1: Subscribe to GameEventBus events
+	SubscribeToGameEvents();
 }
 
 void UDialogueCameraComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// NEW v1.17.1: Unsubscribe from GameEventBus
+	UnsubscribeFromGameEvents();
+
 	// Ensure camera is deactivated on component destruction
 	// BUT only if not already tearing down world (PIE end, level transition, etc.)
 	UWorld* World = GetWorld();
@@ -64,6 +75,13 @@ void UDialogueCameraComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		{
 			GetWorld()->GetTimerManager().ClearTimer(TrackingTimerHandle);
 			TrackingTimerHandle.Invalidate();
+		}
+
+		// NEW v1.17.1: Clear positioning update timer
+		if (PositioningUpdateTimerHandle.IsValid())
+		{
+			GetWorld()->GetTimerManager().ClearTimer(PositioningUpdateTimerHandle);
+			PositioningUpdateTimerHandle.Invalidate();
 		}
 		
 		// Destroy camera actor if it still exists
@@ -1045,4 +1063,319 @@ float UDialogueCameraComponent::ApplyBlendFunction(float Alpha, EViewTargetBlend
 	default:
 		return Alpha;
 	}
+}
+
+//==============================================================================
+// NEW v1.17.1: GameEventBus Integration - Camera Synchronization
+//==============================================================================
+
+void UDialogueCameraComponent::SubscribeToGameEvents()
+{
+#if WITH_GAMEEVENTBUS
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	UGameEventBusSubsystem* EventBus = UGameEventBusSubsystem::Get(World);
+	if (!EventBus)
+	{
+		UE_LOG(LogDialogueCamera, Warning, TEXT("SubscribeToGameEvents: GameEventBusSubsystem not available"));
+		return;
+	}
+
+	// Subscribe to ParticipantPositioned event using C++ lambda
+	FGameplayTag PositioningTag = FGameplayTag::RequestGameplayTag(FName("GameEvent.Dialogue.ParticipantPositioned"));
+	
+	// Use lambda to wrap member function call
+	auto OnPositionedLambda = [this](const FGameEventPayload& Payload)
+	{
+		this->OnParticipantPositioned(Payload);
+	};
+
+	PositioningEventHandle = EventBus->SubscribeToEventNative(PositioningTag, FGameEventNativeDelegate::FDelegate::CreateLambda(OnPositionedLambda));
+
+	UE_LOG(LogDialogueCamera, Log, TEXT("SubscribeToGameEvents: Subscribed to Dialogue.ParticipantPositioned events"));
+
+	// NEW v1.17.1: Subscribe to NodeEntered event for speaker switching
+	FGameplayTag NodeEnteredTag = FGameplayTag::RequestGameplayTag(FName("GameEvent.Dialogue.NodeEntered"));
+	
+	auto OnNodeEnteredLambda = [this](const FGameEventPayload& Payload)
+	{
+		this->OnNodeEntered(Payload);
+	};
+
+	NodeEnteredEventHandle = EventBus->SubscribeToEventNative(NodeEnteredTag, FGameEventNativeDelegate::FDelegate::CreateLambda(OnNodeEnteredLambda));
+
+	UE_LOG(LogDialogueCamera, Log, TEXT("SubscribeToGameEvents: Subscribed to Dialogue.NodeEntered events"));
+#endif
+}
+
+void UDialogueCameraComponent::UnsubscribeFromGameEvents()
+{
+#if WITH_GAMEEVENTBUS
+	if (!PositioningEventHandle.IsValid() && !NodeEnteredEventHandle.IsValid())
+	{
+		return; // Not subscribed
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	UGameEventBusSubsystem* EventBus = UGameEventBusSubsystem::Get(World);
+	if (!EventBus)
+	{
+		return;
+	}
+
+	// Unregister positioning listener
+	if (PositioningEventHandle.IsValid())
+	{
+		FGameplayTag PositioningTag = FGameplayTag::RequestGameplayTag(FName("GameEvent.Dialogue.ParticipantPositioned"));
+		EventBus->UnsubscribeNative(PositioningTag, PositioningEventHandle);
+		PositioningEventHandle.Reset();
+		UE_LOG(LogDialogueCamera, Log, TEXT("UnsubscribeFromGameEvents: Unsubscribed from Dialogue.ParticipantPositioned"));
+	}
+
+	// Unregister node entered listener
+	if (NodeEnteredEventHandle.IsValid())
+	{
+		FGameplayTag NodeEnteredTag = FGameplayTag::RequestGameplayTag(FName("GameEvent.Dialogue.NodeEntered"));
+		EventBus->UnsubscribeNative(NodeEnteredTag, NodeEnteredEventHandle);
+		NodeEnteredEventHandle.Reset();
+		UE_LOG(LogDialogueCamera, Log, TEXT("UnsubscribeFromGameEvents: Unsubscribed from Dialogue.NodeEntered"));
+	}
+#endif
+}
+
+void UDialogueCameraComponent::OnParticipantPositioned(const FGameEventPayload& Payload)
+{
+#if WITH_GAMEEVENTBUS
+	// Only process if camera is active and auto-update enabled
+	if (!bCameraActive || !bAutoUpdateOnPositioning)
+	{
+		return;
+	}
+
+	// Check if positioned actor is our current target
+	AActor* PositionedActor = Payload.TargetActor.Get();
+	AActor* CurrentTargetActor = CurrentTarget.Get();
+
+	if (!PositionedActor || !CurrentTargetActor)
+	{
+		return;
+	}
+
+	if (PositionedActor != CurrentTargetActor)
+	{
+		UE_LOG(LogDialogueCamera, Verbose, TEXT("OnParticipantPositioned: Actor '%s' positioned, but not current target (target is '%s')"),
+			*PositionedActor->GetName(),
+			*CurrentTargetActor->GetName());
+		return;
+	}
+
+	// IMPORTANT: Clear any pending update timer first
+	UWorld* World = GetWorld();
+	if (World && PositioningUpdateTimerHandle.IsValid())
+	{
+		World->GetTimerManager().ClearTimer(PositioningUpdateTimerHandle);
+		PositioningUpdateTimerHandle.Invalidate();
+	}
+
+	UE_LOG(LogDialogueCamera, Log, TEXT("OnParticipantPositioned: Current target '%s' moved to %s"), 
+		*CurrentTargetActor->GetName(),
+		*PositionedActor->GetActorLocation().ToCompactString());
+
+	// Schedule delayed camera update (allows positioning animation to settle)
+	if (World && PositioningUpdateDelay > 0.0f)
+	{
+		World->GetTimerManager().SetTimer(
+			PositioningUpdateTimerHandle,
+			this,
+			&UDialogueCameraComponent::UpdateCameraAfterPositioning,
+			PositioningUpdateDelay,
+			false // One-shot
+		);
+
+		UE_LOG(LogDialogueCamera, Log, TEXT("  Scheduled camera update in %.2f seconds"), PositioningUpdateDelay);
+	}
+	else
+	{
+		// Immediate update if no delay configured
+		UpdateCameraAfterPositioning();
+	}
+#endif
+}
+
+void UDialogueCameraComponent::OnNodeEntered(const FGameEventPayload& Payload)
+{
+#if WITH_GAMEEVENTBUS
+	// Only process if camera is active and auto-switch enabled
+	if (!bCameraActive || !bAutoSwitchToSpeaker)
+	{
+		return;
+	}
+
+	// Extract speaker info from payload
+	AActor* SpeakerActor = Payload.TargetActor.Get();
+	
+	if (!SpeakerActor)
+	{
+		// Try to extract speaker ID from AdditionalPersonaIds
+		if (Payload.AdditionalPersonaIds.Num() > 0)
+		{
+			FName SpeakerId = FName(*Payload.AdditionalPersonaIds[0]);
+			
+			UE_LOG(LogDialogueCamera, Log, TEXT("OnNodeEntered: Node '%s', Speaker '%s' (actor not resolved in payload)"),
+				*Payload.StringParam.ToString(),
+				*SpeakerId.ToString());
+		}
+		else
+		{
+			UE_LOG(LogDialogueCamera, Verbose, TEXT("OnNodeEntered: Node '%s' has no speaker"), 
+				*Payload.StringParam.ToString());
+		}
+		return;
+	}
+
+	// Check if this is a different speaker than current target
+	AActor* CurrentTargetActor = CurrentTarget.Get();
+	
+	if (SpeakerActor == CurrentTargetActor)
+	{
+		UE_LOG(LogDialogueCamera, Verbose, TEXT("OnNodeEntered: Speaker '%s' is already current target, no switch needed"),
+			*SpeakerActor->GetName());
+		return; // Already focused on this speaker
+	}
+
+	UE_LOG(LogDialogueCamera, Log, TEXT("OnNodeEntered: Switching camera to new speaker '%s'"),
+		*SpeakerActor->GetName());
+
+	// Switch camera to new speaker
+	TransitionToTarget(SpeakerActor, SpeakerSwitchBlendTime);
+
+#endif
+}
+
+void UDialogueCameraComponent::UpdateCameraAfterPositioning()
+{
+	if (!bCameraActive || !CurrentTarget.IsValid() || !DialogueCameraActor)
+	{
+		return;
+	}
+
+	UE_LOG(LogDialogueCamera, Log, TEXT("UpdateCameraAfterPositioning: Repositioning camera for '%s'"), 
+		*CurrentTarget->GetName());
+
+	// Get current camera settings
+	FDialogueCameraSettings Settings = GetCurrentCameraSettings();
+
+	// IMPORTANT: Update OriginalPlayerLocation to current camera position for stable framing
+	if (CachedCameraManager.IsValid())
+	{
+		OriginalPlayerLocation = CachedCameraManager->GetCameraLocation();
+		UE_LOG(LogDialogueCamera, Log, TEXT("  Updated original player location: %s"), 
+			*OriginalPlayerLocation.ToCompactString());
+	}
+
+	// Calculate NEW camera transform based on current target position
+	FTransform NewCameraTransform = CalculateCameraTransform(CurrentTarget.Get(), Settings);
+
+	// NEW v1.17.1: Validate camera position before applying
+	if (!ValidateCameraPosition(NewCameraTransform, CurrentTarget.Get()))
+	{
+		UE_LOG(LogDialogueCamera, Warning, TEXT("  Camera position validation FAILED - target may not be visible!"));
+		// Continue anyway but log warning
+	}
+
+	UE_LOG(LogDialogueCamera, Log, TEXT("  Current camera: %s"), 
+		*DialogueCameraActor->GetActorLocation().ToCompactString());
+	UE_LOG(LogDialogueCamera, Log, TEXT("  New camera: %s"), 
+		*NewCameraTransform.GetLocation().ToCompactString());
+
+	// Smoothly blend camera to new position
+	if (PositioningBlendTime > 0.0f)
+	{
+		// SMOOTH TRANSITION
+		bIsBlending = true;
+		BlendStartTime = GetWorld()->GetTimeSeconds();
+		BlendDuration = PositioningBlendTime;
+		BlendStartTransform = DialogueCameraActor->GetActorTransform();
+		BlendTargetTransform = NewCameraTransform;
+		CurrentBlendFunction = VTBlend_EaseInOut; // Smooth ease for repositioning
+
+		// FOV stays the same
+		if (DialogueCameraComponent)
+		{
+			StartFOV = DialogueCameraComponent->FieldOfView;
+			TargetFOV = StartFOV;
+		}
+
+		SetComponentTickEnabled(true);
+
+		UE_LOG(LogDialogueCamera, Log, TEXT("  Blending camera over %.2f seconds"), PositioningBlendTime);
+	}
+	else
+	{
+		// Instant reposition
+		DialogueCameraActor->SetActorTransform(NewCameraTransform);
+		UE_LOG(LogDialogueCamera, Log, TEXT("  Instantly repositioned camera"));
+	}
+}
+
+//==============================================================================
+// NEW v1.17.1: Camera Validation
+//==============================================================================
+
+bool UDialogueCameraComponent::ValidateCameraPosition(const FTransform& CameraTransform, AActor* TargetActor) const
+{
+	if (!TargetActor)
+	{
+		return false;
+	}
+
+	float VisibilityScore = 0.0f;
+	bool bVisible = IsActorVisibleFromCamera(CameraTransform, TargetActor, VisibilityScore);
+
+	UE_LOG(LogDialogueCamera, Verbose, TEXT("ValidateCameraPosition: Target '%s' visibility score: %.2f, visible: %s"),
+		*TargetActor->GetName(), VisibilityScore, bVisible ? TEXT("YES") : TEXT("NO"));
+
+	return bVisible;
+}
+
+bool UDialogueCameraComponent::IsActorVisibleFromCamera(const FTransform& CameraTransform, AActor* TargetActor, float& OutVisibilityScore) const
+{
+	if (!TargetActor)
+	{
+		OutVisibilityScore = 0.0f;
+		return false;
+	}
+
+	// Get focus point on target
+	FVector FocusPoint = GetFocusPoint(TargetActor);
+
+	// Calculate direction from camera to target
+	FVector CameraLocation = CameraTransform.GetLocation();
+	FVector DirectionToTarget = (FocusPoint - CameraLocation).GetSafeNormal();
+
+	// Get camera forward vector
+	FVector CameraForward = CameraTransform.GetRotation().GetForwardVector();
+
+	// Calculate dot product (1.0 = looking directly at, 0.0 = perpendicular, -1.0 = behind)
+	float DotProduct = FVector::DotProduct(CameraForward, DirectionToTarget);
+
+	// Visibility score is just the dot product normalized to 0-1 range
+	OutVisibilityScore = FMath::Clamp((DotProduct + 1.0f) * 0.5f, 0.0f, 1.0f);
+
+	// Consider target visible if within ~73 degree cone (DotProduct > 0.3)
+	const float MinVisibilityDot = 0.3f;
+
+	UE_LOG(LogDialogueCamera, Verbose, TEXT("IsActorVisibleFromCamera: Camera Forward: %s, Direction to Target: %s, Dot: %.2f"),
+		*CameraForward.ToCompactString(), *DirectionToTarget.ToCompactString(), DotProduct);
+
+	return DotProduct >= MinVisibilityDot;
 }
