@@ -103,6 +103,42 @@ if (!StateMachine)
         CurrentContext->SetNPC(Cast<AActor>(InParticipants[1]));
     }
     
+    // NEW v1.18.1: Register PersonaIds immediately after setting participants
+    // This ensures turn-to-face system can resolve actors by PersonaId
+    {
+        AActor* Player = CurrentContext->GetPlayer();
+        AActor* PrimaryNPC = CurrentContext->GetNPC();
+        
+        // Auto-resolve Additional Personas from DialogueData
+        TMap<FName, AActor*> AdditionalNPCs;
+        if (InDialogue && InDialogue->AdditionalPersonas.Num() > 0)
+      {
+   UWorld* World = GetWorld();
+            if (World)
+       {
+    for (const auto& Pair : InDialogue->AdditionalPersonas)
+      {
+        FName PersonaId = Pair.Value.PersonaId;
+      if (!PersonaId.IsNone())
+         {
+       AActor* FoundActor = FindActorByPersonaId(World, PersonaId);
+         if (FoundActor)
+            {
+     AdditionalNPCs.Add(PersonaId, FoundActor);
+       UE_LOG(LogDialogueRunner, Log, TEXT("StartDialogue: Auto-resolved Additional Persona '%s' -> '%s'"),
+ *PersonaId.ToString(), *FoundActor->GetName());
+    }
+   }
+       }
+}
+      }
+        
+        RegisterPersonasFromDialogueData(Player, PrimaryNPC, AdditionalNPCs);
+     
+   UE_LOG(LogDialogueRunner, Log, TEXT("StartDialogue: Registered %d personas for turn-to-face system"), 
+     CurrentContext->GetParticipants() ? CurrentContext->GetParticipants()->GetAllPersonaIds().Num() : 0);
+    }
+
     // Create evaluators
     ConditionEvaluator = NewObject<UDialogueConditionEvaluator>(this);
     EffectExecutor = NewObject<UDialogueEffectExecutor>(this);
@@ -631,10 +667,13 @@ void UDialogueRunner::ProcessNode(UDialogueNode* Node)
     
   // Broadcast node entered event
     OnNodeEntered.Broadcast(Node);
-  
-    // NEW v1.17.1: Emit GameEventBus event for camera system
-    EmitNodeEnteredEvent(Node);
-  
+	
+	// NEW v1.17.1: Emit GameEventBus event for camera system
+	EmitNodeEnteredEvent(Node);
+	
+	// NEW v1.18: Automatic turn-to-face if ListenerId is set
+	EmitTurnToFaceEvent(Node);
+	
     // Check for choices
     TArray<UDialogueNode*> Choices = GetAvailableChoices();
     if (Choices.Num() > 0)
@@ -1154,6 +1193,128 @@ void UDialogueRunner::EmitNodeEnteredEvent(UDialogueNode* Node)
 
 	// Emit event for camera to listen
 	EventBus->EmitEvent(Payload, false);
+
+#endif // WITH_GAMEEVENTBUS
+}
+
+//==============================================================================
+// NEW v1.18: Automatic Turn-To-Face Event
+//==============================================================================
+
+void UDialogueRunner::EmitTurnToFaceEvent(UDialogueNode* Node)
+{
+	// NEW v1.18: DIAGNOSTIC - Always log method entry
+	UE_LOG(LogDialogueRunner, Warning, TEXT("[TURN-TO-FACE DEBUG] EmitTurnToFaceEvent called!"));
+	UE_LOG(LogDialogueRunner, Warning, TEXT("[TURN-TO-FACE DEBUG]   Node: %s"), Node ? *Node->NodeId.ToString() : TEXT("NULL"));
+	UE_LOG(LogDialogueRunner, Warning, TEXT("[TURN-TO-FACE DEBUG]   Context: %s"), CurrentContext ? TEXT("VALID") : TEXT("NULL"));
+	
+	if (Node)
+	{
+		UE_LOG(LogDialogueRunner, Warning, TEXT("[TURN-TO-FACE DEBUG]   SpeakerId: %s"), *Node->SpeakerId.ToString());
+		UE_LOG(LogDialogueRunner, Warning, TEXT("[TURN-TO-FACE DEBUG]   ListenerId: %s"), *Node->ListenerId.ToString());
+		UE_LOG(LogDialogueRunner, Warning, TEXT("[TURN-TO-FACE DEBUG]   ListenerId.IsNone(): %s"), Node->ListenerId.IsNone() ? TEXT("YES") : TEXT("NO"));
+	}
+
+#if WITH_GAMEEVENTBUS
+	if (!Node || !CurrentContext)
+	{
+		UE_LOG(LogDialogueRunner, Warning, TEXT("[TURN-TO-FACE DEBUG] Early return: Node or Context invalid"));
+		return;
+	}
+
+	// Check if ListenerId is set (automatic turn-to-face)
+	if (Node->ListenerId.IsNone())
+	{
+		UE_LOG(LogDialogueRunner, Warning, TEXT("[TURN-TO-FACE DEBUG] Early return: ListenerId is None"));
+		// No ListenerId - no automatic turn-to-face
+		return;
+	}
+
+	// Check if SpeakerId is set (who should turn)
+	if (Node->SpeakerId.IsNone())
+	{
+		UE_LOG(LogDialogueRunner, Warning, TEXT("[TURN-TO-FACE] ListenerId set but no SpeakerId - skipping automatic turn"));
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	UGameEventBusSubsystem* EventBus = UGameEventBusSubsystem::Get(World);
+	if (!EventBus)
+	{
+		return;
+	}
+
+	// Resolve speaker actor (who turns)
+	UDialogueParticipants* Participants = CurrentContext->GetParticipants();
+	if (!Participants)
+	{
+		UE_LOG(LogDialogueRunner, Warning, TEXT("[TURN-TO-FACE] No Participants component - cannot resolve actors"));
+		return;
+	}
+
+	AActor* SpeakerActor = Participants->GetActorByPersonaId(Node->SpeakerId);
+	if (!SpeakerActor)
+	{
+		UE_LOG(LogDialogueRunner, Warning, TEXT("[TURN-TO-FACE] Speaker actor not found for '%s'"), 
+			*Node->SpeakerId.ToString());
+		return;
+	}
+
+	// Resolve listener actor (turn target)
+	AActor* ListenerActor = Participants->GetActorByPersonaId(Node->ListenerId);
+	if (!ListenerActor)
+	{
+		UE_LOG(LogDialogueRunner, Warning, TEXT("[TURN-TO-FACE] Listener actor not found for '%s'"), 
+			*Node->ListenerId.ToString());
+		return;
+	}
+
+	// Prepare payload
+	FGameEventPayload Payload;
+	Payload.EventTag = FGameplayTag::RequestGameplayTag(FName("GameEvent.Dialogue.TurnToFace"));
+	Payload.InstigatorActor = SpeakerActor;  // Who turns
+	Payload.TargetActor = ListenerActor; // Turn target
+	Payload.StringParam = FName(TEXT("Smooth"));  // Default mode
+	Payload.FloatParam = 0.5f;     // Default duration
+	Payload.IntParam = 0;           // bHeadOnly = false
+
+	UE_LOG(LogDialogueRunner, Log, TEXT("[TURN-TO-FACE] Auto turn-to-face: '%s' turns to '%s'"),
+		*Node->SpeakerId.ToString(),
+		*Node->ListenerId.ToString());
+	
+	UE_LOG(LogDialogueRunner, Log, TEXT("[TURN-TO-FACE]   SpeakerActor: %s"), 
+		*SpeakerActor->GetName());
+	UE_LOG(LogDialogueRunner, Log, TEXT("[TURN-TO-FACE]   ListenerActor: %s"), 
+		*ListenerActor->GetName());
+
+	// Emit event
+	EventBus->EmitEvent(Payload, true); // bLogEvent = true for debugging
+
+	// ===== NEW v1.18.1: Symmetrical turn - Player ? NPC =====
+	// If NPC addresses Player, Player should turn to NPC too!
+	if (Node->ListenerId == FName("Player") && Node->SpeakerId != FName("Player"))
+	{
+		UE_LOG(LogDialogueRunner, Log, TEXT("[TURN-TO-FACE] Symmetrical turn: Player turns to '%s'"),
+			*Node->SpeakerId.ToString());
+		
+		// Emit reverse event: Player turns to NPC
+		FGameEventPayload PlayerPayload;
+		PlayerPayload.EventTag = FGameplayTag::RequestGameplayTag(FName("GameEvent.Dialogue.TurnToFace"));
+		PlayerPayload.InstigatorActor = ListenerActor;  // Player (who turns)
+		PlayerPayload.TargetActor = SpeakerActor;  // NPC (turn target)
+		PlayerPayload.StringParam = FName(TEXT("Smooth"));
+		PlayerPayload.FloatParam = 0.5f;    // Same duration
+		PlayerPayload.IntParam = 0;         // Full body rotation
+		
+		EventBus->EmitEvent(PlayerPayload, true);
+		
+		UE_LOG(LogDialogueRunner, Log, TEXT("[TURN-TO-FACE] Player symmetrical turn event emitted"));
+	}
 
 #endif // WITH_GAMEEVENTBUS
 }
@@ -1849,6 +2010,7 @@ void UDialogueRunner::ApplyPendingEndPositions()
 		Config.PositioningMode = PositioningMode;
 		Config.bWaitForCompletion = true; // Wait for end positioning
 		Config.bApplyRotation = true;
+		Config.bSkipCapsuleCompensation = true; // FIX v1.17.4: Sequence positions already at correct height!
 
 		// Additional settings based on mode
 		if (PositioningMode == EDialoguePositioningMode::ConditionalTeleport)

@@ -95,8 +95,25 @@ struct DIALOGUESYSTEMCORE_API FDialogueNodeData
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Core")
     EDialogueNodeType NodeType = EDialogueNodeType::NpcLine;
 
+    /** Who speaks (PersonaId) */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Core")
     FName SpeakerId;
+    
+    /** 
+     * NEW v1.18: Who is being addressed (PersonaId)
+     * 
+   * Controls automatic turn-to-face behavior.
+     * - Leave empty = No automatic turn-to-face
+     * - "Player" = Turn to player
+     * - NPC PersonaId = Turn to that NPC
+     * 
+* Examples:
+     *   NPC → Player dialogue: ListenerId = "Player"
+     *NPC → NPC dialogue: ListenerId = "Alice"
+     *   Monologue/narration: ListenerId = None
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Core")
+    FName ListenerId;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Content", meta = (MultiLine = true))
     FText DialogueText;
@@ -174,6 +191,13 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue")
     FName SpeakerId;
+
+    /** 
+     * NEW v1.18: Who is being addressed (PersonaId)
+     * Set from FDialogueNodeData during initialization.
+   */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue")
+    FName ListenerId;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue", meta = (MultiLine = true))
     FText DialogueText;

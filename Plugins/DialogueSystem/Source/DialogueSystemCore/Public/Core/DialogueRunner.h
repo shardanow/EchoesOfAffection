@@ -289,6 +289,9 @@ protected:
 
     /** NEW v1.17.1: Emit GameEventBus event when node is entered (for camera system) */
     void EmitNodeEnteredEvent(UDialogueNode* Node);
+    
+    /** NEW v1.18: Emit GameEventBus event for automatic turn-to-face (based on ListenerId) */
+    void EmitTurnToFaceEvent(UDialogueNode* Node);
 
     /** NEW v1.13.2: Gather all sequence participants from all dialogue nodes */
     TArray<AActor*> GatherAllSequenceParticipants() const;

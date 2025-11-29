@@ -7,6 +7,165 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Dialogue System Plugin v1.18
+
+#### Turn-To-Face System (v1.18) - MAJOR NEW FEATURE
+- **Automatic turn-to-face functionality** for NPCs and Player during dialogue
+  - **NEW: `DialogueNode.ListenerId` field**
+    - Declarative approach: set ListenerId > actor turns automatically
+    - Works for NPC > Player and NPC > NPC conversations
+    - No sequences needed for basic turn-to-face
+  - **NEW: `DialogueEffect_TurnToFace` effect class**
+    - Manual override for special cases (10% of use cases)
+ - Multiple rotation modes: Smooth, Instant, LookAt, Forward
+    - Configurable duration (0.1-5.0 seconds)
+   - Optional head-only rotation (if rig supports)
+    - Wait for completion option
+  - **NEW: `ETurnToFaceMode` enum**
+    - Smooth: Interpolated rotation (default, natural)
+    - Instant: Snap to target (reactions, urgent)
+    - LookAt: Continuous tracking (cutscenes)
+    - Forward: Reset to (0,0,0) (dramatic turns away)
+  - **GameEventBus integration:**
+    - Event: `GameEvent.Dialogue.TurnToFace`
+    - Payload: InstigatorActor, TargetActor, Mode, Duration, bHeadOnly
+    - Loose coupling: subscribers implement actual rotation
+    - No hard dependencies on animation/IK systems
+  - **Automatic detection in DialogueRunner:**
+    - `EmitTurnToFaceEvent()` method
+    - Auto-emits event when `ListenerId` is set
+    - Resolves speaker and listener actors via DialogueParticipants
+    - Detailed logging for troubleshooting
+- **Architecture:**
+  - **Layer 1:** Declarative (DialogueNode.ListenerId)
+  - **Layer 2:** Automatic detection (DialogueRunner.ProcessNode)
+  - **Layer 3:** GameEventBus event emission
+  - **Layer 4:** Subscribers (Blueprint/C++ rotation logic)
+- **Benefits:**
+  - ? 90% of conversations: just set ListenerId field
+  - ? 10% special cases: use DialogueEffect_TurnToFace
+  - ? No sequences needed for basic turn-to-face
+  - ? Works at any position/distance dynamically
+  - ? Easy to maintain and modify
+  - ? Event-driven, performant (<0.05ms overhead)
+- **Documentation:**
+  - `TurnToFace_Design_v1.18.md` - Complete architecture design
+  - `TurnToFace_Implementation_v1.18.md` - Implementation guide with examples
+  - 5 usage examples (simple, NPC-NPC, override, group, forward)
+  - Troubleshooting guide
+  - Migration guide from sequences
+  - API reference
+
+### Fixed - Dialogue System Plugin v1.17.4
+
+#### Sequence End Position Double Compensation Fix (v1.17.4) - CRITICAL FIX
+- **Sequence END positioning** now correctly applies positions without double capsule compensation
+  - **Problem**: Characters fell after sequence ends due to double compensation
+    - Sequence saves END positions at correct height (Z=94 = feet on ground)
+    - `ExecuteTeleport()` added capsule compensation (+94.5)
+    - Character teleported too high (Z=188.5) ? fell down
+  - **Solution**: Added `bSkipCapsuleCompensation` flag
+    - NEW: `FDialogueParticipantPositioning::bSkipCapsuleCompensation` field
+    - `ExecuteTeleport()` skips compensation when flag=true
+    - `ApplyPendingEndPositions()` sets flag=true for sequence positions
+    - Marker-based positioning still uses compensation (flag=false by default)
+  - **Benefits**:
+    - ? Characters stand exactly where sequence left them
+    - ? NO falling after sequence ends
+    - ? Sequence END positions applied correctly
+      - ? Marker positioning still works correctly (separate compensation logic)
+- **Documentation**: 
+  - `SequenceEndPositionFix_v1.17.4.md` - Complete technical analysis
+  - `QUICKFIX_SequenceEnd_v1.17.4.md` - Quick reference guide
+
+### Fixed - Dialogue System Plugin v1.17.3
+
+#### Sequence Actor Falling Fix (v1.17.3) - CRITICAL FIX
+- **DialogueEffect_PlaySequence** now uses physics-safe teleportation for transform restoration
+  - **Problem**: Actors "fell" to ground after sequence ended
+    - `SetActorTransform()` didn't account for physics
+    - Gravity suddenly activated after sequence ? actors fell
+  - Physics state (velocity, forces) not reset properly
+  - **Solution**: Physics-safe teleportation with movement stop
+    - `StopMovementImmediately()` before restoration
+    - `SetMovementMode(MOVE_Walking)` to ensure proper state
+    - `ETeleportType::ResetPhysics` to reset all physics forces
+    - Applies only to `ACharacter` (other actors use standard transform)
+  - **Benefits**:
+    - ? Actors smoothly return to original position
+    - ? No "falling" visual glitch after sequence
+    - ? Physics properly reset (velocity, acceleration cleared)
+    - ? Works with all sequences that use `bRestoreActorTransforms=true`
+- **Documentation**: 
+  - `SequenceFix_ActorFalling_v1.17.3.md` - Complete technical analysis
+  - `QUICKFIX_Sequence_v1.17.3.md` - Quick reference guide
+
+### Fixed - Dialogue System Plugin v1.17.2
+
+#### Teleport Capsule Offset Fix (v1.17.2) - CRITICAL FIX
+- **DialogueEffect_PositionTeleport** now correctly positions characters on ground
+  - **Problem**: Characters sank halfway into ground after teleportation
+    - Unreal Engine positions `ACharacter` at **capsule center**, not at feet
+    - Teleporting to ground level (Z=27) placed center at Z=27, feet underground
+  - **Solution**: Added automatic capsule half-height compensation
+    - Reads capsule half-height from character (typically ~88cm)
+    - Offsets target Z-coordinate by this value
+    - Characters now stand **perfectly on ground** after teleport
+  - **Additional improvement**: Changed teleport type
+    - `ETeleportType::TeleportPhysics` ? `ETeleportType::ResetPhysics`
+    - Prevents physics glitches and "flying" after teleport
+  - **Benefits**:
+    - ? No more "sinking into ground" visual glitch
+    - ? Works with all character sizes (scales automatically)
+    - ? Safer physics handling
+- **Documentation**: 
+  - `TeleportFix_CapsuleOffset_v1.17.2.md` - Complete technical details
+  - `QUICKFIX_Teleport_v1.17.2.md` - Quick reference guide
+
+### Fixed - Dialogue System Plugin v1.17.1
+
+#### Camera Teleportation Tracking Fix (v1.17.1) - CRITICAL FIX
+- **DialogueCameraComponent** now correctly updates after actor teleportation
+  - **Problem**: Camera did not reposition when actor was teleported/moved
+    - `UpdateCameraAfterPositioning()` had overly complex logic with delta checks
+    - Minimum delta threshold (5cm) prevented updates when actor moved
+    - Wrong use of `OriginalPlayerLocation` for calculations
+  - **Solution**: Simplified camera update logic
+    - Removed minimum delta checks - camera **always** updates after positioning
+    - Uses current camera position for calculations (not original player location)
+    - Standard blending through Tick system (no custom interpolation)
+  - **Additional features**: 
+    - Added `ValidateCameraPosition()` - checks if target is in camera view cone
+    - Added `IsActorVisibleFromCamera()` - validates target visibility
+    - Detailed logging for troubleshooting
+  - **Benefits**:
+    - ? Camera smoothly follows actor after teleportation
+    - ? Camera updates correctly after sequence playback
+    - ? Camera validates target visibility (73° cone)
+- **Documentation**: 
+  - `DialogueCamera_TeleportFix_v1.17.1.md` - Complete analysis and solution
+  - `QUICK_FIX_CAMERA_v1.17.1.md` - Quick start instructions
+
+#### Node Event Emission Fix (v1.17.1) - CRITICAL FIX
+- **DialogueRunner** now correctly emits `NodeEntered` events for camera synchronization
+  - **Problem**: Camera was not switching between speakers automatically
+    - `ProcessNode()` broadcasted `OnNodeEntered` delegate but didn't emit GameEventBus event
+    - `EmitNodeEnteredEvent()` was declared but never called
+  - **Solution**: Added `EmitNodeEnteredEvent()` calls in `ProcessNode()`
+ - Called after normal node broadcast
+    - Called after End node broadcast
+    - Camera now receives speaker change events
+  - **Benefits**:
+    - ? Camera automatically switches to current speaker
+    - ? Works with multi-speaker dialogues
+    - ? Smooth transitions between participants
+
+#### GameplayTags Registration (v1.17.1)
+- **Config/DefaultGameplayTags.ini** - Added missing tags for camera system
+  - `GameEvent.Dialogue.NodeEntered` - Node/speaker change event
+  - `GameEvent.Dialogue.ParticipantPositioned` - Actor positioning event
+  - Prevents "Gameplay Tag not found" errors
+
 ### Added - Dialogue System Plugin v1.13.5
 
 #### ActorSchedule Pause/Resume Fix (v1.13.5) - CRITICAL FIX

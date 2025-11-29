@@ -6,6 +6,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Components/CapsuleComponent.h" // FIX v1.17.2: For capsule half-height compensation
 
 UDialogueEffect_PositionTeleport::UDialogueEffect_PositionTeleport()
 {
@@ -48,13 +49,30 @@ void UDialogueEffect_PositionTeleport::ExecuteTeleport(
 	}
 
 	// Prepare teleport parameters
-	const FVector TargetLocation = TargetTransform.GetLocation();
+	FVector TargetLocation = TargetTransform.GetLocation();
 	const FRotator TargetRotation = PositioningConfig.bApplyRotation 
 		? TargetTransform.GetRotation().Rotator() 
 		: ParticipantActor->GetActorRotation();
 
-	// Stop any active movement before teleporting
+	// ===== FIX v1.17.2: Compensate for capsule half-height =====
+	// Characters are positioned at capsule CENTER, not at feet!
+	// We need to offset Z by capsule half-height to place feet on ground.
+	// ===== FIX v1.17.4: BUT skip compensation for sequence end positions! =====
 	ACharacter* Character = Cast<ACharacter>(ParticipantActor);
+	if (Character && Character->GetCapsuleComponent() && !PositioningConfig.bSkipCapsuleCompensation)
+	{
+		float CapsuleHalfHeight = Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+		TargetLocation.Z += CapsuleHalfHeight;
+		
+		UE_LOG(LogDialoguePositioning, Log, TEXT("ExecuteTeleport: Compensated Z by capsule half-height: %.2f (Final Z: %.2f)"), 
+			CapsuleHalfHeight, TargetLocation.Z);
+	}
+	else if (PositioningConfig.bSkipCapsuleCompensation)
+	{
+		UE_LOG(LogDialoguePositioning, Log, TEXT("ExecuteTeleport: Skipping capsule compensation (sequence end position)"));
+	}
+
+	// Stop any active movement before teleporting
 	if (Character && Character->GetCharacterMovement())
 	{
 		Character->GetCharacterMovement()->StopMovementImmediately();
@@ -68,7 +86,7 @@ void UDialogueEffect_PositionTeleport::ExecuteTeleport(
 		AIController->StopMovement();
 	}
 
-	// Execute teleport with physics-safe flag
+	// Execute teleport with physics reset (safer than TeleportPhysics)
 	const bool bSweep = false; // No sweep - instant teleport
 	FHitResult HitResult;
 	ParticipantActor->SetActorLocationAndRotation(
@@ -76,11 +94,12 @@ void UDialogueEffect_PositionTeleport::ExecuteTeleport(
 		TargetRotation,
 		bSweep,
 		&HitResult,
-		ETeleportType::TeleportPhysics
+		ETeleportType::ResetPhysics // FIXED: Use ResetPhysics instead of TeleportPhysics
 	);
 
-	UE_LOG(LogDialoguePositioning, Log, TEXT("ExecuteTeleport: Successfully teleported '%s'"), 
-		*ParticipantActor->GetName());
+	UE_LOG(LogDialoguePositioning, Log, TEXT("ExecuteTeleport: Successfully teleported '%s' to %s"), 
+		*ParticipantActor->GetName(),
+		*TargetLocation.ToString());
 }
 
 void UDialogueEffect_PositionTeleport::SpawnTeleportEffects(

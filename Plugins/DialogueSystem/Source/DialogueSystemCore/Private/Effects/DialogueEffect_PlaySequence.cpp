@@ -12,6 +12,9 @@
 #include "Kismet/GameplayStatics.h"
 #include "Camera/PlayerCameraManager.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h" // FIX v1.17.3: For physics-safe restoration
+#include "Components/CapsuleComponent.h" // FIX v1.17.3: For capsule component access
 #include "EngineUtils.h"
 
 // ? GameEventBus integration (only if enabled)
@@ -305,8 +308,52 @@ void UDialogueEffect_PlaySequence::CleanupSequence(bool bSkipTransformRestore)
 				if (bShouldRestore)
 				{
 					const FTransform& OriginalTransform = Pair.Value;
-					Actor->SetActorTransform(OriginalTransform);
-					UE_LOG(LogDialogueSequence, Log, TEXT("[CLEANUP] Restored transform for actor: %s"), *Actor->GetName());
+					
+					// ===== FIX v1.17.3: Physics-safe transform restoration =====
+					// Use safe teleportation to prevent "falling" after sequence
+					
+					// DEBUG: Log actor class for troubleshooting
+					UE_LOG(LogDialogueSequence, Warning, TEXT("[CLEANUP DEBUG] Restoring actor: %s (Class: %s)"), 
+						*Actor->GetName(), 
+						*Actor->GetClass()->GetName());
+					
+					// For characters, compensate for capsule offset (same as teleport effect)
+					ACharacter* Character = Cast<ACharacter>(Actor);
+					if (Character && Character->GetCapsuleComponent())
+					{
+						UE_LOG(LogDialogueSequence, Warning, TEXT("[CLEANUP DEBUG] Actor IS a Character - using physics-safe restoration"));
+						
+						// Stop any movement before restoration
+						if (Character->GetCharacterMovement())
+						{
+							Character->GetCharacterMovement()->StopMovementImmediately();
+							Character->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+						}
+						
+						// Use physics-safe teleportation
+						FVector RestoreLocation = OriginalTransform.GetLocation();
+						FRotator RestoreRotation = OriginalTransform.GetRotation().Rotator();
+						
+						const bool bSweep = false;
+						FHitResult HitResult;
+						Actor->SetActorLocationAndRotation(
+							RestoreLocation,
+							RestoreRotation,
+							bSweep,
+							&HitResult,
+							ETeleportType::ResetPhysics // CRITICAL: Reset physics to prevent falling
+						);
+						
+						UE_LOG(LogDialogueSequence, Log, TEXT("[CLEANUP] Restored transform (physics-safe) for actor: %s"), *Actor->GetName());
+					}
+					else
+					{
+						UE_LOG(LogDialogueSequence, Warning, TEXT("[CLEANUP DEBUG] Actor is NOT a Character (or has no capsule) - using standard restoration"));
+						
+						// For non-characters, use standard transform (no physics issues)
+						Actor->SetActorTransform(OriginalTransform);
+						UE_LOG(LogDialogueSequence, Log, TEXT("[CLEANUP] Restored transform for actor: %s"), *Actor->GetName());
+					}
 				}
 			}
 		}

@@ -20,6 +20,7 @@ void UDialogueNode::Initialize(const FDialogueNodeData& InData)
     NodeId = InData.NodeId;
     NodeType = InData.NodeType;
     SpeakerId = InData.SpeakerId;
+    ListenerId = InData.ListenerId;  // NEW v1.18: Copy ListenerId
     DialogueText = InData.DialogueText;
     ChoiceText = InData.ChoiceText;
     Presentation = InData.Presentation;

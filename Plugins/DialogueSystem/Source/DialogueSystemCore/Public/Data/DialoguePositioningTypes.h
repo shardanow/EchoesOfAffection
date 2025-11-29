@@ -105,20 +105,20 @@ struct DIALOGUESYSTEMCORE_API FDialogueParticipantPositioning
 	/** Apply rotation when positioning */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Positioning|Behavior")
 	bool bApplyRotation = true;
+	
+	/** 
+	 * NEW v1.17.4: Skip capsule height compensation
+	 * Set to TRUE for positions coming from sequence (already at correct height)
+	 * Set to FALSE for marker positions (need capsule compensation)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Positioning|Advanced")
+	bool bSkipCapsuleCompensation = false;
 
 	FDialogueParticipantPositioning()
 		: ParticipantId(NAME_None)
 		, PositioningMode(EDialoguePositioningMode::AIMoveTo)
-		, LocationSource(EDialogueLocationSource::MarkerTag)
-		, TargetLocation(FVector::ZeroVector)
-		, TargetRotation(FRotator::ZeroRotator)
-		, MarkerTag(FGameplayTag())
-		, TargetActor(nullptr)
-		, TeleportDistanceThreshold(1000.0f)
-		, bWaitForCompletion(true)
-		, AcceptanceRadius(50.0f)
-		, bUsePathfinding(true)
 		, bApplyRotation(true)
+		, bSkipCapsuleCompensation(false)
 	{
 	}
 };
